@@ -1,0 +1,143 @@
+# manifest.yaml — the module contract. Linted by `beepboop module check` (docs/MODULES.md §4).
+# This is the worked example `parcel`. `beepboop module new <id>` rewrites the id and tool prefixes for you.
+
+id: parcel                     # ^[a-z][a-z0-9_]{1,31}$ ; equals the folder name
+api: 1                         # contract version; always 1 for now
+version: 0.1.0                 # SemVer from the model's point of view (tool rename/removal = MAJOR)
+summary: "Track the user's own parcels and say when they arrive."   # <= 20 words; becomes the module card line
+scope: profile                 # profile: each person connects their own carrier account and tracking numbers
+category: productivity         # home | media | productivity | information | communication | persona | system
+locales: [en]
+license: MIT
+keywords: [package, parcel, delivery, shipment, tracking, courier, order, arriving, shipped]   # <= 12; BM25 index
+
+# No `requires.ha` ⇒ this module is native (docs/MODULES.md §4.2). Native only because carriers have no HA per-person model.
+requires:
+  core: ">=0.1,<1"
+
+# The only hosts ctx.http may reach (docs/MODULES.md §2). `purpose` is shown on the person's Privacy tab.
+egress:
+  - destination: api.example-carrier.test
+    purpose: "Look up the status of tracking numbers you add."
+
+# Rendered as a form by the Web UI with no module UI code (docs/MODULES.md §6). Only the documented subset.
+settings:
+  type: object
+  properties:
+    carrier:
+      type: string
+      title: Default carrier
+      description: "Used when a tracking number's carrier cannot be detected."
+      enum: [auto, ups, usps, fedex, dhl]
+      x-enum-labels: {auto: "Detect automatically", ups: "UPS", usps: "USPS", fedex: "FedEx", dhl: "DHL"}
+      default: auto
+  required: []
+
+# Envelope-encrypted; never in settings, logs, tool args, results or evals (docs/MODULES.md §7).
+secrets:
+  - name: api_key
+    title: Carrier API key
+    description: "From the carrier aggregator's developer console. See SETUP.md."
+    required: true
+    kind: user
+
+tools:
+  - name: parcel.track
+    description: >-
+      Report where the user's tracked parcels are and when they will arrive. Use for
+      "where's my package", "when is my order coming", "any deliveries today". With no
+      tracking number, report every active parcel; with one, report just that parcel.
+    risk: personal                 # someone else's parcels are personal data
+    untrusted_output: true         # carrier status text is written by third parties → taints the turn (L17: always declared)
+    idempotent: true
+    timeout_ms: 4000
+    args:
+      type: object
+      properties:
+        tracking_number:
+          type: string
+          description: "Exact tracking number if the user said one; otherwise omit to list all."
+        query:
+          type: string
+          description: "Free-text filter on the parcel label, e.g. 'shoes', 'the Amazon one'."
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        parcels:
+          type: array
+          items:
+            type: object
+            properties:
+              label: {type: string}
+              tracking_number: {type: string}
+              carrier: {type: string}
+              status: {type: string, enum: [label_created, in_transit, out_for_delivery, delivered, exception, unknown]}
+              eta: {type: [string, "null"], description: "ISO 8601 date or date-time; null when the carrier gave none"}
+              last_update: {type: string, description: "Carrier text; untrusted"}
+      required: [speak, parcels]
+    examples:
+      - utterance: "where's my package"
+        args: {}
+      - utterance: "where are the shoes I ordered"
+        args: {query: "shoes"}
+
+  - name: parcel.add
+    description: >-
+      Start tracking a parcel for the user by tracking number, with an optional label. Use for
+      "track this package", "add tracking number 1Z…", "I'm expecting a delivery from…". Read the
+      number back digit by digit before calling if the user dictated it.
+    risk: personal
+    untrusted_output: false
+    idempotent: true               # adding the same number twice is a no-op
+    args:
+      type: object
+      properties:
+        tracking_number:
+          type: string
+          description: "Tracking number without spaces, uppercase."
+        label:
+          type: string
+          description: "Short human label: 'shoes', 'birthday present'. Default: the carrier name."
+        carrier:
+          type: string
+          enum: [auto, ups, usps, fedex, dhl]
+          description: "Only if the user named the carrier; default auto."
+      required: [tracking_number]
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        tracking_number: {type: string}
+        carrier: {type: string}
+        already_tracked: {type: boolean}
+      required: [speak, tracking_number]
+    examples:
+      - utterance: "track package 1Z999AA10123456784, it's the shoes"
+        args: {tracking_number: "1Z999AA10123456784", label: "shoes"}
+
+  - name: parcel.remove
+    description: >-
+      Stop tracking a parcel. Use for "stop tracking the shoes", "remove that package",
+      "forget the delivered ones". Match by label or tracking number; "delivered" removes all delivered parcels.
+    risk: personal
+    untrusted_output: false
+    idempotent: true
+    args:
+      type: object
+      properties:
+        tracking_number: {type: string, description: "Exact tracking number, if known."}
+        query: {type: string, description: "Label text to match, or 'delivered' for all delivered parcels."}
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        removed: {type: array, items: {type: string}}
+        status: {type: string, enum: [ok, none_matched, needs_clarification]}
+      required: [speak, removed, status]
+    examples:
+      - utterance: "stop tracking the shoes"
+        args: {query: "shoes"}
