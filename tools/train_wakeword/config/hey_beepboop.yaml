@@ -1,0 +1,268 @@
+# Pipeline configuration for the stock "Hey beepboop" model (VOICE_PIPELINE §6.4).
+# Schema: train_wakeword/config.py (pydantic, extra keys rejected).
+# Every voice and dataset below has a row in ../DATA_LICENSES.md keyed by `license_id`;
+# `train-wakeword check` fails if a row is missing or if anything marked
+# `shipped: true` carries a licence that forbids commercial use or redistribution.
+#
+# `shipped: true`  -> may feed the model distributed with beepboop (MIT project).
+# `shipped: false` -> research/experiment profile only (`--profile research`);
+#                     05_export refuses to export a shippable manifest from it.
+
+wake_word: "Hey beepboop"
+model_id: hey_beepboop
+version: 1
+
+positives:
+  target_count: 20000          # VOICE_PIPELINE §6.4: ~20 000 clips
+  holdout_fraction: 0.1        # kept out of training, used by 06_evaluate for FRR
+  generator_share: 0.7         # 70 % from the 904-speaker generator, 30 % from the Piper voices
+  seed: 20261101               # holdout split and feature-set splits
+  batch_size: 32               # CUDA batch size for the .pt generator; 1 on CPU is fine
+  # Speaking-rate variation (VOICE_PIPELINE §6.4: speeds 0.8–1.3). <1 is faster.
+  length_scales: [0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
+  noise_scales: [0.667, 0.8, 1.0]
+  noise_scale_ws: [0.8, 1.0]
+  # Pitch variation is applied in 03_augment (audiomentations PitchShift ±3 st);
+  # Piper has no pitch control.
+  phrases:
+    # Three phoneme spellings from VOICE_PIPELINE §6.4 plus two plain-text forms
+    # (espeak chooses its own phonemes for those, adding variety).
+    - { id: text_joined,     text: "hey beepboop.",            weight: 1.0 }
+    - { id: text_split,      text: "hey beep boop.",           weight: 1.0 }
+    - { id: ipa_joined,      phonemes: "hˈeɪ bˈiːpbuːp",       weight: 1.0 }
+    - { id: ipa_split,       phonemes: "hˈeɪ bˈiːp bˈuːp",     weight: 1.0 }
+    - { id: ipa_clipped,     phonemes: "hˈeɪ bipbup",          weight: 0.6 }
+  voices:
+    # Multi-speaker generator: 904 LibriTTS-R speakers. Capped below the tail of
+    # speakers with too few training samples (generator README recommends < 904).
+    - id: en_US-libritts_r-medium.pt
+      kind: generator
+      url: https://github.com/rhasspy/piper-sample-generator/releases/download/v2.0.0/en_US-libritts_r-medium.pt
+      license_id: libritts_r_generator
+      max_speakers: 600
+      shipped: true
+      note: >
+        Fine-tuned by its author from the lessac voice; see DATA_LICENSES.md for the
+        provenance flag and the owner decision it needs.
+    # Single-speaker Piper voices for timbre diversity (.onnx + .onnx.json each).
+    - { id: en_US-ljspeech-medium, kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx", license_id: piper_ljspeech, shipped: true }
+    - { id: en_US-kristin-medium,  kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kristin/medium/en_US-kristin-medium.onnx",   license_id: piper_kristin,  shipped: true }
+    - { id: en_US-norman-medium,   kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/norman/medium/en_US-norman-medium.onnx",     license_id: piper_norman,   shipped: true }
+    - { id: en_US-john-medium,     kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/john/medium/en_US-john-medium.onnx",         license_id: piper_john,     shipped: true }
+    - { id: en_US-bryce-medium,    kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/bryce/medium/en_US-bryce-medium.onnx",       license_id: piper_bryce,    shipped: true }
+    - { id: en_US-joe-medium,      kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/joe/medium/en_US-joe-medium.onnx",           license_id: piper_joe,      shipped: true }
+    - { id: en_US-kathleen-low,    kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kathleen/low/en_US-kathleen-low.onnx",       license_id: piper_kathleen, shipped: true }
+    - { id: en_GB-cori-medium,     kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/medium/en_GB-cori-medium.onnx",         license_id: piper_cori,     shipped: true }
+    - { id: en_GB-aru-medium,      kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/aru/medium/en_GB-aru-medium.onnx",           license_id: piper_aru,      max_speakers: 12,  shipped: true }
+    - { id: en_GB-alba-medium,     kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx",         license_id: piper_alba,     shipped: true }
+    - { id: en_GB-vctk-medium,     kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/vctk/medium/en_GB-vctk-medium.onnx",         license_id: piper_vctk,     max_speakers: 109, shipped: true }
+    # Research-only voices (NC licences): never in the shipped model.
+    - { id: en_US-hfc_female-medium, kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx", license_id: piper_hfc_female, shipped: false }
+    - { id: en_US-ryan-medium,       kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx",             license_id: piper_ryan,       shipped: false }
+    - { id: en_US-l2arctic-medium,   kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/l2arctic/medium/en_US-l2arctic-medium.onnx",     license_id: piper_l2arctic,   max_speakers: 24, shipped: false }
+  # TTS near-misses (VOICE_PIPELINE §6.4) are generated with the same voices and
+  # trained as hard negatives.
+  near_miss_count: 4000
+  near_misses:
+    - "hey people."
+    - "beat loop."
+    - "he bumped."
+    - "hey, be quick."
+    - "hey, be good."
+    - "hey bebop."
+    - "a beep."
+    - "boop."
+    - "hey, keep looping."
+    - "he beeped."
+    - "hey, pick up."
+    - "big boot."
+    - "hey, sleep."
+    - "deep blue."
+    - "hey, people, look."
+    - "hey."
+
+datasets:
+  # ---- speech negatives (role: speech) ------------------------------------------
+  - id: librispeech_train_other_500
+    role: speech
+    url: https://www.openslr.org/resources/12/train-other-500.tar.gz
+    archive: train-other-500.tar.gz
+    license_id: librispeech
+    shipped: true
+    max_hours: 120          # 500 h is more than the trainer needs; cap conversion time
+  - id: librispeech_dev_clean
+    role: speech
+    url: https://www.openslr.org/resources/12/dev-clean.tar.gz
+    archive: dev-clean.tar.gz
+    license_id: librispeech
+    shipped: true
+    note: small set; lets a laptop run the whole pipeline end to end before the big download
+  - id: speech_commands_v2
+    role: speech
+    url: http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz
+    archive: speech_commands_v0.02.tar.gz
+    license_id: speech_commands
+    shipped: true
+    include: ["**/*.wav"]
+    exclude: ["_background_noise_/*.wav"]
+    note: 105 829 one-second single words; the hardest short-word negatives
+  - id: speech_commands_background
+    role: background
+    url: http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz
+    archive: speech_commands_v0.02.tar.gz
+    license_id: speech_commands
+    shipped: true
+    include: ["_background_noise_/*.wav"]
+    note: dishes, running tap, exercise bike, white/pink noise; same archive as above
+  - id: voices_devkit
+    role: speech
+    archive: VOiCES_devkit.tar.gz
+    manual: true
+    license_id: voices
+    shipped: true
+    include: ["**/*.wav"]
+    note: >
+      Public S3 bucket; fetch with
+      `aws s3 cp --no-sign-request s3://lab41openaudiocorpus/VOiCES_devkit.tar.gz data/negatives/voices_devkit/raw/`
+      (iqtlabs.github.io/voices). Far-field read speech with TV/music/babble distractors.
+  # ---- non-speech negatives and backgrounds (role: no_speech / background) --------
+  - id: musan_music_noise
+    role: no_speech
+    url: https://www.openslr.org/resources/17/musan.tar.gz
+    archive: musan.tar.gz
+    license_id: musan
+    shipped: true
+    include: ["musan/music/**/*.wav", "musan/noise/**/*.wav"]
+    note: no-speech negatives and backgrounds (also serves AddBackgroundNoise)
+  - id: musan_speech
+    role: ambient_eval
+    url: https://www.openslr.org/resources/17/musan.tar.gz
+    archive: musan.tar.gz
+    license_id: musan
+    shipped: true
+    include: ["musan/speech/**/*.wav"]
+    note: read speech (LibriVox, US government hearings); ambient false-accept estimate
+  - id: openslr28_rirs
+    role: rir
+    url: https://www.openslr.org/resources/28/rirs_noises.zip
+    archive: rirs_noises.zip
+    license_id: openslr28
+    shipped: true
+    include: ["RIRS_NOISES/real_rirs_isotropic_noises/*rir*.wav"]
+    note: real RIRs (RWCP, REVERB 2014, AIR) for the RIR augmentation
+  - id: openslr28_noises
+    role: background
+    url: https://www.openslr.org/resources/28/rirs_noises.zip
+    archive: rirs_noises.zip
+    license_id: openslr28
+    shipped: true
+    include: ["RIRS_NOISES/pointsource_noises/*.wav", "RIRS_NOISES/real_rirs_isotropic_noises/*noise*.wav"]
+    note: point-source (from MUSAN) and isotropic noises as backgrounds
+  - id: fsd50k_dev_permissive
+    role: no_speech
+    url: https://zenodo.org/records/4060432/files/FSD50K.dev_audio.zip
+    archive: FSD50K.dev_audio.zip
+    license_id: fsd50k
+    shipped: true
+    clip_filter: fsd50k_permissive
+    include: ["**/*.wav"]
+    max_hours: 40
+    note: >
+      Multi-part zip (z01–z05 + .zip, 19 GB); 02_fetch_negatives downloads every part and
+      the metadata, then keeps only clips whose per-clip licence is CC0 or CC-BY.
+  # ---- ambient evaluation streams (role: ambient_eval; never trained on) -----------
+  - id: librispeech_test_clean
+    role: ambient_eval
+    url: https://www.openslr.org/resources/12/test-clean.tar.gz
+    archive: test-clean.tar.gz
+    license_id: librispeech
+    shipped: true
+    note: concatenated into long streams for the false-accepts-per-hour estimate during training
+  # ---- research-only sets (NC or unclear licence): `--profile research` only -------
+  - id: mit_rirs
+    role: rir
+    manual: true
+    archive: mit_rirs.zip
+    license_id: mit_ir_survey
+    shipped: false
+    include: ["**/*.wav"]
+    note: >
+      MIT IR Survey (271 IRs). Zip the WAVs from mcdermottlab.mit.edu/Reverb/IR_Survey.html or the
+      davidscripka/MIT_environmental_impulse_responses mirror into data/negatives/_archives/mit_rirs.zip.
+      No licence is stated by either source, so it stays research-only.
+  # The upstream notebook's pre-generated negative feature sets
+  # (huggingface.co/datasets/kahrendt/microwakeword, CC BY-NC 4.0) are *features*, not
+  # audio, so they bypass 02/03; see README §7 for how to use them in a research run.
+
+augment:
+  duration_s: 3.2
+  # Keys are the microwakeword Augmentation names; values are per-clip probabilities.
+  probabilities:
+    SevenBandParametricEQ: 0.1
+    TanhDistortion: 0.05
+    PitchShift: 0.25          # the pitch variation VOICE_PIPELINE §6.4 asks for
+    BandStopFilter: 0.1
+    AddColorNoise: 0.2
+    AddBackgroundNoise: 0.75
+    Gain: 1.0
+    GainTransition: 0.25
+    RIR: 0.5
+  background_min_snr_db: 0    # VOICE_PIPELINE §6.4: 0–25 dB SNR household-like noise
+  background_max_snr_db: 25
+  min_gain_db: -35
+  max_gain_db: 0
+  min_jitter_s: 0.195         # trainer convention: positives end ~200 ms before the window edge
+  max_jitter_s: 0.205
+  # XVF3800 frequency response (one M0 sweep, PENDING owner): drop the measured impulse
+  # response WAV(s) into this directory and they join the RIR pool with probability 1.
+  array_ir_dir: null
+  workers: 8
+
+training:
+  window_step_ms: 10          # VOICE_PIPELINE §6.1: 10 ms stride; manifest feature_step_size
+  clip_duration_ms: 1500
+  batch_size: 128
+  training_steps: [20000, 10000]
+  learning_rates: [0.001, 0.0003]
+  positive_class_weight: [1.0]
+  negative_class_weight: [20.0, 30.0]   # upstream advice: raise it to cut false accepts
+  time_mask_max_size: [0]
+  time_mask_count: [0]
+  freq_mask_max_size: [0]
+  freq_mask_count: [0]
+  eval_step_interval: 500
+  minimization_metric: ambient_false_positives_per_hour
+  target_minimization: 0.5
+  maximization_metric: average_viable_recall
+  weights:
+    positives:   { sampling_weight: 2.0,  penalty_weight: 1.0 }
+    near_misses: { sampling_weight: 3.0,  penalty_weight: 1.5 }
+    speech:      { sampling_weight: 10.0, penalty_weight: 1.0 }
+    no_speech:   { sampling_weight: 5.0,  penalty_weight: 1.0 }
+  model:                      # mixednet flags; upstream notebook's architecture
+    pointwise_filters: [64, 64, 64, 64]
+    repeat_in_block: [1, 1, 1, 1]
+    mixconv_kernel_sizes: [[5], [7, 11], [9, 15], [23]]
+    residual_connection: [0, 0, 0, 0]
+    first_conv_filters: 32
+    first_conv_kernel_size: 5
+    stride: 3                 # 3 × 10 ms slices per inference = 30 ms cadence (§6.1)
+
+export:
+  author: beepboop contributors
+  website: https://github.com/beepboop
+  trained_languages: [en]
+  probability_cutoff: 0.97    # VOICE_PIPELINE §17.1 target; 06_evaluate recommends a value
+  sliding_window_size: 5
+  feature_step_size: 10
+  tensor_arena_size: 37000    # ESPHome only (pymicro-wakeword ignores it); okay_nabu's value
+  minimum_esphome_version: "2024.7.0"
+
+evaluate:
+  cutoffs: [0.80, 0.85, 0.90, 0.93, 0.95, 0.97, 0.98, 0.99]
+  sliding_window_sizes: [3, 5, 7]
+  refractory_ms: 2000         # VOICE_PIPELINE §6.2
+  # G5 is ≤ 0.5 false accepts per 24 h on the soak corpus and ≤ 5 % false rejects at 3 m.
+  # These are the same numbers expressed per hour; the synthetic run only estimates them.
+  max_false_accepts_per_hour: 0.0208
+  max_false_reject_rate: 0.05

@@ -1,0 +1,2114 @@
+{
+  "command": "bench all --gates",
+  "corpus": {
+    "n_clips": 58,
+    "n_speakers": 3,
+    "path": "C:\\Users\\Jamin\\beepboop\\tools\\bench\\corpus",
+    "recorded_through": "synthetic-tts",
+    "soak_hours": 0.0,
+    "synthetic": true
+  },
+  "finished_at": "2026-11-03T04:41:39.263473Z",
+  "gates": {
+    "all_passed": false,
+    "gates": [
+      {
+        "arbiter": null,
+        "checks": [
+          {
+            "label": "2 s clip embed p95",
+            "observed": 22.41494501940906,
+            "op": "<",
+            "passed": true,
+            "path": "sections.speaker.fp32.clip_2s_embed_ms.p95",
+            "threshold": 200.0,
+            "unit": "ms"
+          }
+        ],
+        "gate": "G1",
+        "name": "Speaker ID (CAM++ fp32, 2 threads) latency",
+        "note": "checks met but run preconditions unmet (host is a Raspberry Pi (linux/aarch64); corpus is real (recorded through the XVF3800); Home Assistant running during the run)",
+        "preconditions": [
+          {
+            "label": "2 threads",
+            "observed": 2.0,
+            "op": "==",
+            "passed": true,
+            "path": "sections.speaker.threads",
+            "threshold": 2.0,
+            "unit": ""
+          },
+          {
+            "label": "concurrent with STT",
+            "observed": true,
+            "op": "==",
+            "passed": true,
+            "path": "sections.speaker.concurrent_stt",
+            "threshold": true,
+            "unit": ""
+          }
+        ],
+        "status": "incomplete"
+      },
+      {
+        "arbiter": null,
+        "checks": [
+          {
+            "label": "RTF p50",
+            "observed": 0.02344492432208608,
+            "op": "<",
+            "passed": true,
+            "path": "sections.stt.threads_2.rtf.p50",
+            "threshold": 0.6,
+            "unit": ""
+          },
+          {
+            "label": "RTF p90 (<= 1.3x)",
+            "observed": 0.02637130657929022,
+            "op": "<",
+            "passed": true,
+            "path": "sections.stt.threads_2.rtf.p90",
+            "threshold": 0.78,
+            "unit": ""
+          },
+          {
+            "label": "final tail after t_eos p50",
+            "observed": 7.308499945793301,
+            "op": "<=",
+            "passed": true,
+            "path": "sections.stt.threads_2.final_tail_ms.p50",
+            "threshold": 100.0,
+            "unit": "ms"
+          },
+          {
+            "label": "final tail after t_eos p90 (<= 1.3x)",
+            "observed": 11.490899953059852,
+            "op": "<=",
+            "passed": true,
+            "path": "sections.stt.threads_2.final_tail_ms.p90",
+            "threshold": 130.0,
+            "unit": "ms"
+          }
+        ],
+        "gate": "G2",
+        "name": "Streaming STT (zipformer small, 2 threads)",
+        "note": "checks met but run preconditions unmet (host is a Raspberry Pi (linux/aarch64); corpus is real (recorded through the XVF3800); Home Assistant running during the run)",
+        "preconditions": [
+          {
+            "label": "2 threads measured",
+            "observed": 2.0,
+            "op": "==",
+            "passed": true,
+            "path": "sections.stt.threads_2.threads",
+            "threshold": 2.0,
+            "unit": ""
+          }
+        ],
+        "status": "incomplete"
+      },
+      {
+        "arbiter": {
+          "label": "tool-turn first_speech p50",
+          "observed": null,
+          "op": "<=",
+          "passed": null,
+          "path": "sections.e2e.tool.first_speech_ms.p50",
+          "threshold": 2000.0,
+          "unit": "ms"
+        },
+        "checks": [
+          {
+            "label": "warm first-call TTFT p50",
+            "observed": null,
+            "op": "<=",
+            "passed": null,
+            "path": "sections.llm.scenarios.warm_first.ttft_ms.p50",
+            "threshold": 600.0,
+            "unit": "ms"
+          },
+          {
+            "label": "warm second (cached, tool-result) call TTFT p50",
+            "observed": null,
+            "op": "<=",
+            "passed": null,
+            "path": "sections.llm.scenarios.warm_second_tool_result.ttft_ms.p50",
+            "threshold": 500.0,
+            "unit": "ms"
+          }
+        ],
+        "gate": "G3",
+        "name": "Bedrock Haiku 5.5 TTFT, pre-warmed TLS, home connection",
+        "note": "ROADMAP G3: warm first-call p50 <= 600 ms, second call p50 <= 500 ms; the arbiter is tool-turn first_speech p50 <= 2.0 s. Cold cache (gap >= 6 min) is reported, not gated.",
+        "preconditions": [],
+        "status": "skipped"
+      },
+      {
+        "arbiter": null,
+        "checks": [
+          {
+            "label": "peak (MemTotal - MemAvailable), default profile",
+            "observed": null,
+            "op": "<",
+            "passed": null,
+            "path": "sections.ram.default.peak_used_bytes",
+            "threshold": 3435973836.8,
+            "unit": "bytes"
+          },
+          {
+            "label": "zram used, default profile",
+            "observed": null,
+            "op": "<",
+            "passed": null,
+            "path": "sections.ram.default.zram_used_pct_peak",
+            "threshold": 25.0,
+            "unit": "%"
+          },
+          {
+            "label": "OOM kills over 24 h, default profile",
+            "observed": null,
+            "op": "==",
+            "passed": null,
+            "path": "sections.ram.default.oom_kills",
+            "threshold": 0.0,
+            "unit": "kills"
+          },
+          {
+            "label": "peak (MemTotal - MemAvailable), music on",
+            "observed": null,
+            "op": "<",
+            "passed": null,
+            "path": "sections.ram.music.peak_used_bytes",
+            "threshold": 3435973836.8,
+            "unit": "bytes"
+          },
+          {
+            "label": "zram used, music on",
+            "observed": null,
+            "op": "<",
+            "passed": null,
+            "path": "sections.ram.music.zram_used_pct_peak",
+            "threshold": 25.0,
+            "unit": "%"
+          },
+          {
+            "label": "OOM kills over 24 h, music on",
+            "observed": null,
+            "op": "==",
+            "passed": null,
+            "path": "sections.ram.music.oom_kills",
+            "threshold": 0.0,
+            "unit": "kills"
+          }
+        ],
+        "gate": "G4",
+        "name": "RAM",
+        "note": "ROADMAP G4: peak used < 3.2 GB (read as GiB) on a 4 GB Pi, zram used < 25 %, zero OOM kills of any container over 24 h, default profile and again with music on.",
+        "preconditions": [
+          {
+            "label": "4 GB Pi",
+            "observed": null,
+            "op": "==",
+            "passed": null,
+            "path": "host.pi_ram_variant",
+            "threshold": "4gb",
+            "unit": ""
+          },
+          {
+            "label": "default profile sampled >= 24 h",
+            "observed": null,
+            "op": ">=",
+            "passed": null,
+            "path": "sections.ram.default.duration_s",
+            "threshold": 86400.0,
+            "unit": "s"
+          },
+          {
+            "label": "music profile sampled >= 24 h",
+            "observed": null,
+            "op": ">=",
+            "passed": null,
+            "path": "sections.ram.music.duration_s",
+            "threshold": 86400.0,
+            "unit": "s"
+          }
+        ],
+        "status": "skipped"
+      },
+      {
+        "arbiter": null,
+        "checks": [
+          {
+            "label": "false accepts per 24 h (soak corpus)",
+            "observed": 0.0,
+            "op": "<=",
+            "passed": true,
+            "path": "sections.wake.false_accepts_per_24h",
+            "threshold": 0.5,
+            "unit": "/24h"
+          },
+          {
+            "label": "false rejects at 3 m",
+            "observed": 33.333333333333336,
+            "op": "<=",
+            "passed": false,
+            "path": "sections.wake.false_reject_pct_3m",
+            "threshold": 5.0,
+            "unit": "%"
+          }
+        ],
+        "gate": "G5",
+        "name": "Wake word, stock \"Hey beepboop\" model",
+        "note": "ROADMAP G5: <= 0.5 false accepts per 24 h on the soak corpus, <= 5 % false rejects at 3 m.",
+        "preconditions": [
+          {
+            "label": "stock hey_beepboop model",
+            "observed": false,
+            "op": "==",
+            "passed": false,
+            "path": "sections.wake.stock_model",
+            "threshold": true,
+            "unit": ""
+          },
+          {
+            "label": "soak corpus >= 24 h",
+            "observed": 0.009061527777777778,
+            "op": ">=",
+            "passed": false,
+            "path": "sections.wake.soak_hours",
+            "threshold": 24.0,
+            "unit": "h"
+          }
+        ],
+        "status": "incomplete"
+      },
+      {
+        "arbiter": null,
+        "checks": [
+          {
+            "label": "fast path first_speech p50",
+            "observed": 279.51959997881204,
+            "op": "<=",
+            "passed": true,
+            "path": "sections.e2e.fast_path.first_speech_ms.p50",
+            "threshold": 500.0,
+            "unit": "ms"
+          },
+          {
+            "label": "fast path first_speech p90 (<= 1.3x)",
+            "observed": 288.40637003304437,
+            "op": "<=",
+            "passed": true,
+            "path": "sections.e2e.fast_path.first_speech_ms.p90",
+            "threshold": 650.0,
+            "unit": "ms"
+          },
+          {
+            "label": "1 s command first_speech p50",
+            "observed": 276.60394995473325,
+            "op": "<=",
+            "passed": true,
+            "path": "sections.e2e.command_1s.first_speech_ms.p50",
+            "threshold": 500.0,
+            "unit": "ms"
+          },
+          {
+            "label": "1 s command first_speech p90 (<= 1.3x)",
+            "observed": 280.72310000425205,
+            "op": "<=",
+            "passed": true,
+            "path": "sections.e2e.command_1s.first_speech_ms.p90",
+            "threshold": 650.0,
+            "unit": "ms"
+          },
+          {
+            "label": "no-tool first audio p95 (earcon promise)",
+            "observed": null,
+            "op": "<",
+            "passed": null,
+            "path": "sections.e2e.no_tool.first_audio_ms.p95",
+            "threshold": 1000.0,
+            "unit": "ms"
+          },
+          {
+            "label": "tool first audio p95 (earcon promise)",
+            "observed": null,
+            "op": "<",
+            "passed": null,
+            "path": "sections.e2e.tool.first_audio_ms.p95",
+            "threshold": 1000.0,
+            "unit": "ms"
+          },
+          {
+            "label": "no-tool first_speech p50",
+            "observed": null,
+            "op": "<",
+            "passed": null,
+            "path": "sections.e2e.no_tool.first_speech_ms.p50",
+            "threshold": 1500.0,
+            "unit": "ms"
+          },
+          {
+            "label": "no-tool first_speech p90 (<= 1.3x)",
+            "observed": null,
+            "op": "<",
+            "passed": null,
+            "path": "sections.e2e.no_tool.first_speech_ms.p90",
+            "threshold": 1950.0,
+            "unit": "ms"
+          },
+          {
+            "label": "tool first_speech p50",
+            "observed": null,
+            "op": "<",
+            "passed": null,
+            "path": "sections.e2e.tool.first_speech_ms.p50",
+            "threshold": 2000.0,
+            "unit": "ms"
+          },
+          {
+            "label": "tool first_speech p90 (<= 1.3x)",
+            "observed": null,
+            "op": "<",
+            "passed": null,
+            "path": "sections.e2e.tool.first_speech_ms.p90",
+            "threshold": 2600.0,
+            "unit": "ms"
+          },
+          {
+            "label": "TTS first chunk (stage check) p50",
+            "observed": 125.5164000322111,
+            "op": "<=",
+            "passed": true,
+            "path": "sections.tts.default_voice_first_chunk_ms.p50",
+            "threshold": 200.0,
+            "unit": "ms"
+          },
+          {
+            "label": "TTS first chunk (stage check) p90 (<= 1.3x)",
+            "observed": 158.02489002235234,
+            "op": "<=",
+            "passed": true,
+            "path": "sections.tts.default_voice_first_chunk_ms.p90",
+            "threshold": 260.0,
+            "unit": "ms"
+          }
+        ],
+        "gate": "G6",
+        "name": "End-to-end latency contract (ADR 0015)",
+        "note": "ROADMAP G6: p50 fast path <= 0.5 s offline incl. the 1 s command case; first audio < 1.0 s (p95, earcon); no-tool < 1.5 s; tool < 2.0 s; p90 <= 1.3x each; TTS first chunk p50 <= 200 ms.",
+        "preconditions": [
+          {
+            "label": "fast path measured offline",
+            "observed": null,
+            "op": "==",
+            "passed": null,
+            "path": "sections.e2e.offline",
+            "threshold": true,
+            "unit": ""
+          }
+        ],
+        "status": "incomplete"
+      },
+      {
+        "arbiter": null,
+        "checks": [
+          {
+            "label": "0x4 throttle bit seen",
+            "observed": null,
+            "op": "==",
+            "passed": null,
+            "path": "sections.thermal.throttled_0x4_seen",
+            "threshold": false,
+            "unit": ""
+          }
+        ],
+        "gate": "G7",
+        "name": "Thermal",
+        "note": "ROADMAP G7: no 0x4 throttle bit during a 20-minute bench e2e with the reference fan case.",
+        "preconditions": [
+          {
+            "label": "sampled during e2e",
+            "observed": "e2e",
+            "op": "==",
+            "passed": true,
+            "path": "sections.thermal.during",
+            "threshold": "e2e",
+            "unit": ""
+          },
+          {
+            "label": "20 minutes",
+            "observed": 0.0,
+            "op": ">=",
+            "passed": false,
+            "path": "sections.thermal.duration_s",
+            "threshold": 1200.0,
+            "unit": "s"
+          }
+        ],
+        "status": "skipped"
+      }
+    ],
+    "measurement": "not a gate result",
+    "run_preconditions": [
+      {
+        "label": "host is a Raspberry Pi (linux/aarch64)",
+        "observed": false,
+        "op": "==",
+        "passed": false,
+        "path": "host.is_raspberry_pi",
+        "threshold": true,
+        "unit": ""
+      },
+      {
+        "label": "corpus is real (recorded through the XVF3800)",
+        "observed": true,
+        "op": "==",
+        "passed": false,
+        "path": "corpus.synthetic",
+        "threshold": false,
+        "unit": ""
+      },
+      {
+        "label": "Home Assistant running during the run",
+        "observed": null,
+        "op": "==",
+        "passed": null,
+        "path": "sections.e2e.ha_running",
+        "threshold": true,
+        "unit": ""
+      }
+    ]
+  },
+  "host": {
+    "board_model": null,
+    "captured_at": "2026-11-03T04:40:48.083229Z",
+    "cpu_count": 16,
+    "hostname": "DESKTOP-N9QE44H",
+    "is_raspberry_pi": false,
+    "machine": "AMD64",
+    "mem_total_bytes": null,
+    "pi_ram_variant": null,
+    "python": "3.12.10",
+    "release": "11",
+    "system": "Windows",
+    "throttled_at_start": null,
+    "vcgencmd_available": false
+  },
+  "label": "synthetic / x86 / not a gate result; synthetic corpus generated by tools/bench/synthetic; Windows 11 x86_64 16-core dev box",
+  "measurement": "not a gate result",
+  "models": {
+    "speaker": "wespeaker-en-voxceleb-campp",
+    "stt": "sherpa-onnx-streaming-zipformer-en-20m-2023-02-17",
+    "tts:vits-piper-en_US-lessac-low": "vits-piper-en_US-lessac-low",
+    "vad": "silero-vad"
+  },
+  "notes": [],
+  "schema_version": 1,
+  "sections": {
+    "aec": {
+      "aec_verified": null,
+      "notes": [],
+      "playback_hit_rate": null,
+      "playback_wer_pct": null,
+      "quiet_hit_rate": null,
+      "quiet_wer_pct": null,
+      "reason": "needs the XVF3800, a speaker, a person at 2 m and Linux ALSA; run on the Pi with --device hw:<card> (procedure: tools/probes/aec_reference/README.md)",
+      "status": "pending"
+    },
+    "e2e": {
+      "command_1s": {
+        "first_audio_ms": {
+          "max": 281.2148999655619,
+          "mean": 277.41429997452843,
+          "min": 274.5609999401495,
+          "n": 6,
+          "p50": 276.60394995473325,
+          "p90": 280.72310000425205,
+          "p95": 280.968999984907
+        },
+        "first_speech_ms": {
+          "max": 281.2148999655619,
+          "mean": 277.41429997452843,
+          "min": 274.5609999401495,
+          "n": 6,
+          "p50": 276.60394995473325,
+          "p90": 280.72310000425205,
+          "p95": 280.968999984907
+        },
+        "n": 6,
+        "stages": {
+          "endpoint": {
+            "max": 249.99849998857826,
+            "mean": 249.74469997687265,
+            "min": 249.2730999365449,
+            "n": 6,
+            "p50": 249.79994999011979,
+            "p90": 249.96144999749959,
+            "p95": 249.97997499303892
+          },
+          "fastpath": {
+            "max": 0.00100000761449337,
+            "mean": 0.000733338917295138,
+            "min": 0.000600004568696022,
+            "n": 6,
+            "p50": 0.000700005330145359,
+            "p90": 0.000900006853044033,
+            "p95": 0.0009500072337687016
+          },
+          "first_audio": {
+            "max": 281.2148999655619,
+            "mean": 277.41429997452843,
+            "min": 274.5609999401495,
+            "n": 6,
+            "p50": 276.60394995473325,
+            "p90": 280.72310000425205,
+            "p95": 280.968999984907
+          },
+          "first_speech": {
+            "max": 281.2148999655619,
+            "mean": 277.41429997452843,
+            "min": 274.5609999401495,
+            "n": 6,
+            "p50": 276.60394995473325,
+            "p90": 280.72310000425205,
+            "p95": 280.968999984907
+          },
+          "speaker_final": {
+            "max": 281.13809996284544,
+            "mean": 277.34688327958185,
+            "min": 274.499399936758,
+            "n": 6,
+            "p50": 276.5402499353513,
+            "p90": 280.6507999775931,
+            "p95": 280.8944499702193
+          },
+          "speech": {
+            "max": 960.991800064221,
+            "mean": 792.2639167130304,
+            "min": 580.3298000246286,
+            "n": 6,
+            "p50": 805.6335500441492,
+            "p90": 960.7975000399165,
+            "p95": 960.8946500520688
+          },
+          "stt_tail": {
+            "max": 262.9175999900326,
+            "mean": 261.8017832865007,
+            "min": 260.94899990130216,
+            "n": 6,
+            "p50": 261.5132499486208,
+            "p90": 262.81894999556243,
+            "p95": 262.8682749927975
+          }
+        }
+      },
+      "concurrency": 2,
+      "fast_path": {
+        "first_audio_ms": {
+          "max": 289.8867999901995,
+          "mean": 280.5437083200862,
+          "min": 271.274899947457,
+          "n": 12,
+          "p50": 279.51959997881204,
+          "p90": 288.40637003304437,
+          "p95": 289.1254900197964
+        },
+        "first_speech_ms": {
+          "max": 289.8867999901995,
+          "mean": 280.5437083200862,
+          "min": 271.274899947457,
+          "n": 12,
+          "p50": 279.51959997881204,
+          "p90": 288.40637003304437,
+          "p95": 289.1254900197964
+        },
+        "n": 12,
+        "stages": {
+          "endpoint": {
+            "max": 260.5030999984592,
+            "mean": 254.95491666758122,
+            "min": 249.42369991913438,
+            "n": 12,
+            "p50": 254.9859500140883,
+            "p90": 260.1478699943982,
+            "p95": 260.30911499401554
+          },
+          "fastpath": {
+            "max": 0.00100000761449337,
+            "mean": 0.0006833288352936506,
+            "min": 0.000500003807246685,
+            "n": 12,
+            "p50": 0.000600004568696022,
+            "p90": 0.0008999952115118504,
+            "p95": 0.0009450071956962346
+          },
+          "first_audio": {
+            "max": 289.8867999901995,
+            "mean": 280.5437083200862,
+            "min": 271.274899947457,
+            "n": 12,
+            "p50": 279.51959997881204,
+            "p90": 288.40637003304437,
+            "p95": 289.1254900197964
+          },
+          "first_speech": {
+            "max": 289.8867999901995,
+            "mean": 280.5437083200862,
+            "min": 271.274899947457,
+            "n": 12,
+            "p50": 279.51959997881204,
+            "p90": 288.40637003304437,
+            "p95": 289.1254900197964
+          },
+          "speaker_final": {
+            "max": 289.8245999822393,
+            "mean": 280.4685166629497,
+            "min": 271.2220000103116,
+            "n": 12,
+            "p50": 279.3997499975376,
+            "p90": 288.33115003071725,
+            "p95": 289.05526001472026
+          },
+          "speech": {
+            "max": 2020.415100036189,
+            "mean": 1787.2485499926067,
+            "min": 1570.6710000522435,
+            "n": 12,
+            "p50": 1780.457100016065,
+            "p90": 1960.760069929529,
+            "p95": 1987.6128799747676
+          },
+          "stt_tail": {
+            "max": 273.9259999943897,
+            "mean": 267.6614999848728,
+            "min": 261.4755999529734,
+            "n": 12,
+            "p50": 267.2310500056483,
+            "p90": 273.62975999712944,
+            "p95": 273.7993899907451
+          }
+        }
+      },
+      "ha_running": null,
+      "llm_live": false,
+      "no_tool": {
+        "first_audio_ms": null,
+        "first_speech_ms": null,
+        "n": 9,
+        "stages": {
+          "endpoint": {
+            "max": 260.1777999661863,
+            "mean": 256.6762333477123,
+            "min": 249.40910004079342,
+            "n": 9,
+            "p50": 259.71480004955083,
+            "p90": 259.9701199680567,
+            "p95": 260.0739599671215
+          },
+          "fastpath": {
+            "max": 0.00100000761449337,
+            "mean": 0.0007666725044449171,
+            "min": 0.000600004568696022,
+            "n": 9,
+            "p50": 0.000800006091594696,
+            "p90": 0.0009200070053339005,
+            "p95": 0.0009600073099136353
+          },
+          "speaker_final": {
+            "max": 290.42580001987517,
+            "mean": 283.2981444403736,
+            "min": 274.1064000874758,
+            "n": 9,
+            "p50": 286.75359999760985,
+            "p90": 288.0428399425,
+            "p95": 289.2343199811876
+          },
+          "speech": {
+            "max": 2408.533400041051,
+            "mean": 1970.4280444420874,
+            "min": 1730.4330000188202,
+            "n": 9,
+            "p50": 1830.7000000495464,
+            "p90": 2274.393400014378,
+            "p95": 2341.4634000277147
+          },
+          "stt_tail": {
+            "max": 287.25179994944483,
+            "mean": 274.2378666686515,
+            "min": 261.892499984242,
+            "n": 9,
+            "p50": 272.8516000788659,
+            "p90": 284.2986000003293,
+            "p95": 285.7751999748871
+          },
+          "tts_first_chunk": {
+            "max": 78.14650004729629,
+            "mean": 71.54335553706106,
+            "min": 63.73099994380027,
+            "n": 9,
+            "p50": 69.75140003487468,
+            "p90": 78.08425994589925,
+            "p95": 78.11537999659777
+          }
+        }
+      },
+      "notes": [
+        "not measured off the Pi: output buffer/DAC, wake earcon loopback, HA state storm",
+        "fast path: grammar lookup stub; reply is the pre-synthesised cached 'Done.' clip",
+        "LLM not live: no_tool/tool first_speech not reported (local stages only)"
+      ],
+      "offline": null,
+      "realtime": true,
+      "reason": null,
+      "status": "measured",
+      "tool": {
+        "first_audio_ms": null,
+        "first_speech_ms": null,
+        "n": 9,
+        "stages": {
+          "endpoint": {
+            "max": 260.15720004215837,
+            "mean": 257.76144445666836,
+            "min": 249.90699999034405,
+            "n": 9,
+            "p50": 259.9465000675991,
+            "p90": 260.10752003639936,
+            "p95": 260.13236003927886
+          },
+          "fastpath": {
+            "max": 0.000800006091594696,
+            "mean": 0.0006999923951096005,
+            "min": 0.0005998881533741951,
+            "n": 9,
+            "p50": 0.000700005330145359,
+            "p90": 0.000800006091594696,
+            "p95": 0.000800006091594696
+          },
+          "speaker_final": {
+            "max": 289.6843000780791,
+            "mean": 284.91808890572025,
+            "min": 277.6302000274882,
+            "n": 9,
+            "p50": 286.00289998576045,
+            "p90": 289.0589399728924,
+            "p95": 289.37162002548575
+          },
+          "speech": {
+            "max": 2470.3942999476567,
+            "mean": 2023.9166777529235,
+            "min": 1640.6172999413684,
+            "n": 9,
+            "p50": 2050.634799990803,
+            "p90": 2342.542860028334,
+            "p95": 2406.4685799879953
+          },
+          "stt_tail": {
+            "max": 282.5633999891579,
+            "mean": 271.6933333366695,
+            "min": 260.8133000321686,
+            "n": 9,
+            "p50": 271.63700002711266,
+            "p90": 282.1991600096226,
+            "p95": 282.38127999939024
+          },
+          "tts_first_chunk": {
+            "max": 76.9657000200823,
+            "mean": 69.01954444280516,
+            "min": 60.54029997903854,
+            "n": 9,
+            "p50": 67.22560001071543,
+            "p90": 76.56785997096449,
+            "p95": 76.7667799955234
+          }
+        }
+      },
+      "turns": [
+        {
+          "clip_id": "syn_a_cmd00",
+          "error": null,
+          "expected_transcript": "lights off",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "command_1s",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.99849998857826,
+            "fastpath": 0.000700005330145359,
+            "first_audio": 280.23130004294217,
+            "first_speech": 280.23130004294217,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 280.1634999923408,
+            "speech": 960.603200015612,
+            "stt_tail": 262.9175999900326,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 2.4457537999842316,
+          "tools": [],
+          "transcript": "S OFF",
+          "turn_id": "t0000"
+        },
+        {
+          "clip_id": "syn_a_cmd01",
+          "error": null,
+          "expected_transcript": "stop",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "command_1s",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.72409999463707,
+            "fastpath": 0.000600004568696022,
+            "first_audio": 281.2148999655619,
+            "first_speech": 281.2148999655619,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 281.13809996284544,
+            "speech": 640.3916000854224,
+            "stt_tail": 261.1972999293357,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 2.4484310999978334,
+          "tools": [],
+          "transcript": "",
+          "turn_id": "t0001"
+        },
+        {
+          "clip_id": "syn_a_cmd02",
+          "error": null,
+          "expected_transcript": "turn off the kitchen lights",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 250.14099990949035,
+            "fastpath": 0.000800006091594696,
+            "first_audio": 274.8542999615893,
+            "first_speech": 274.8542999615893,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 274.7805999824777,
+            "speech": 1640.7959000207484,
+            "stt_tail": 262.7916999626905,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 3.3704257999779657,
+          "tools": [],
+          "transcript": "F THE KITCHEN LIGHTS",
+          "turn_id": "t0002"
+        },
+        {
+          "clip_id": "syn_a_cmd03",
+          "error": null,
+          "expected_transcript": "turn on the living room lamp",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 250.27289998251945,
+            "fastpath": 0.00100000761449337,
+            "first_audio": 274.9634999781847,
+            "first_speech": 274.9634999781847,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 274.89819994661957,
+            "speech": 1670.4642999684438,
+            "stt_tail": 263.10839992947876,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 3.687068899977021,
+          "tools": [],
+          "transcript": "ON THE LIVING ROOM LAM",
+          "turn_id": "t0003"
+        },
+        {
+          "clip_id": "syn_a_cmd04",
+          "error": null,
+          "expected_transcript": "set a timer for five minutes",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 260.1503999903798,
+            "fastpath": 0.000500003807246685,
+            "first_audio": 284.9778999807313,
+            "first_speech": 284.9778999807313,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 284.91519996896386,
+            "speech": 1920.57079996448,
+            "stt_tail": 273.69579998776317,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 5.286445099976845,
+          "tools": [],
+          "transcript": "ER FOR FIVE MINUTES",
+          "turn_id": "t0004"
+        },
+        {
+          "clip_id": "syn_a_cmd05",
+          "error": null,
+          "expected_transcript": "add milk to the shopping list",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.69900004565716,
+            "fastpath": 0.000500003807246685,
+            "first_audio": 286.6457999916747,
+            "first_speech": 286.6457999916747,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 286.57730005215853,
+            "speech": 1960.6283999746665,
+            "stt_tail": 273.9259999943897,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 5.632989799953066,
+          "tools": [],
+          "transcript": "D MILK TO THE SHOPPING LIST",
+          "turn_id": "t0005"
+        },
+        {
+          "clip_id": "syn_a_cmd06",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "what is the weather like tomorrow",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "no_tool",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.77420003619045,
+            "fastpath": 0.000600004568696022,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 290.42580001987517,
+            "speech": 1830.4779999889433,
+            "stt_tail": 287.25179994944483,
+            "tts_first_chunk": 76.95039990358055,
+            "wake": null
+          },
+          "started_at_s": 7.492433300008997,
+          "tools": [],
+          "transcript": "T IS THE WEATHER LIKE TO MORROW",
+          "turn_id": "t0006"
+        },
+        {
+          "clip_id": "syn_a_cmd07",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "tell me a short joke about robots",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "no_tool",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 251.97410001419485,
+            "fastpath": 0.000600004568696022,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 274.69690004363656,
+            "speech": 2408.533400041051,
+            "stt_tail": 271.97729994077235,
+            "tts_first_chunk": 66.66469993069768,
+            "wake": null
+          },
+          "started_at_s": 7.880824199994095,
+          "tools": [],
+          "transcript": "E A SHORT JOKE ABOUT ROBUTS",
+          "turn_id": "t0007"
+        },
+        {
+          "clip_id": "syn_a_cmd08",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "how long do you boil an egg",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "no_tool",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.71480004955083,
+            "fastpath": 0.000800006091594696,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 285.77519999817014,
+            "speech": 1960.719299968332,
+            "stt_tail": 272.8516000788659,
+            "tts_first_chunk": 69.21270000748336,
+            "wake": null
+          },
+          "started_at_s": 9.692052999977022,
+          "tools": [],
+          "transcript": "O BOIL AN EGG",
+          "turn_id": "t0008"
+        },
+        {
+          "clip_id": "syn_a_cmd09",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "is the garage door open",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "tool",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.77649993728846,
+            "fastpath": 0.000700005330145359,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 288.9025999465957,
+            "speech": 1760.6403999961913,
+            "stt_tail": 282.5633999891579,
+            "tts_first_chunk": 76.9657000200823,
+            "wake": null
+          },
+          "started_at_s": 10.632460599998012,
+          "tools": [],
+          "transcript": "S THE GARAGE DOOR OPEN",
+          "turn_id": "t0009"
+        },
+        {
+          "clip_id": "syn_a_cmd10",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "what is the temperature in the bedroom",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "tool",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 260.06790006067604,
+            "fastpath": 0.0005998881533741951,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 285.90530005749315,
+            "speech": 2050.634799990803,
+            "stt_tail": 271.5256999945268,
+            "tts_first_chunk": 62.57670000195503,
+            "wake": null
+          },
+          "started_at_s": 12.009015299961902,
+          "tools": [],
+          "transcript": "T IS THE TEMPERATURE IN THE BEDRO",
+          "turn_id": "t0010"
+        },
+        {
+          "clip_id": "syn_a_cmd11",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "lock the front door and dim the hallway",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "tool",
+          "speaker": "syn_a",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.9373999983072,
+            "fastpath": 0.000700005330145359,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 287.0490000350401,
+            "speech": 2310.5800000485033,
+            "stt_tail": 271.8547999393195,
+            "tts_first_chunk": 66.53349997941405,
+            "wake": null
+          },
+          "started_at_s": 12.760857000015676,
+          "tools": [],
+          "transcript": "T DOOR AND DIM THE HALLWA",
+          "turn_id": "t0011"
+        },
+        {
+          "clip_id": "syn_b_cmd00",
+          "error": null,
+          "expected_transcript": "lights off",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "command_1s",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.2730999365449,
+            "fastpath": 0.000700005330145359,
+            "first_audio": 277.4873999878764,
+            "first_speech": 277.4873999878764,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 277.41919993422925,
+            "speech": 960.991800064221,
+            "stt_tail": 261.4736999385059,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 14.409543699934147,
+          "tools": [],
+          "transcript": "S OFF",
+          "turn_id": "t0012"
+        },
+        {
+          "clip_id": "syn_b_cmd01",
+          "error": null,
+          "expected_transcript": "stop",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "command_1s",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.9244000064209,
+            "fastpath": 0.000600004568696022,
+            "first_audio": 275.2706999890506,
+            "first_speech": 275.2706999890506,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 275.19979991484433,
+            "speech": 680.8690000325441,
+            "stt_tail": 261.5527999587357,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 15.42655500001274,
+          "tools": [],
+          "transcript": "",
+          "turn_id": "t0013"
+        },
+        {
+          "clip_id": "syn_b_cmd02",
+          "error": null,
+          "expected_transcript": "turn off the kitchen lights",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 250.00960007309914,
+            "fastpath": 0.000800006091594696,
+            "first_audio": 273.2311000581831,
+            "first_speech": 273.2311000581831,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 273.17430009134114,
+            "speech": 1640.5306999804452,
+            "stt_tail": 263.26520007569343,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 15.648394900024869,
+          "tools": [],
+          "transcript": "OFF THE KITCHEN LIGHTS",
+          "turn_id": "t0014"
+        },
+        {
+          "clip_id": "syn_b_cmd03",
+          "error": null,
+          "expected_transcript": "turn on the living room lamp",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 250.20769995171577,
+            "fastpath": 0.000900006853044033,
+            "first_audio": 275.6080999970436,
+            "first_speech": 275.6080999970436,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 275.5253999494016,
+            "speech": 1640.4348999494687,
+            "stt_tail": 263.7904000002891,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 16.38312509993557,
+          "tools": [],
+          "transcript": "URN ON THE LIVING ROOM LAM",
+          "turn_id": "t0015"
+        },
+        {
+          "clip_id": "syn_b_cmd04",
+          "error": null,
+          "expected_transcript": "set a timer for five minutes",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 260.1251000305638,
+            "fastpath": 0.000500003807246685,
+            "first_audio": 287.54029993433505,
+            "first_speech": 287.54029993433505,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 287.47929993551224,
+            "speech": 1890.449900063686,
+            "stt_tail": 271.1241999641061,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 17.562540199956857,
+          "tools": [],
+          "transcript": "ER FOR FIVE MINUTES",
+          "turn_id": "t0016"
+        },
+        {
+          "clip_id": "syn_b_cmd05",
+          "error": null,
+          "expected_transcript": "add milk to the shopping list",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.73720010370016,
+            "fastpath": 0.000600004568696022,
+            "first_audio": 288.50260004401207,
+            "first_speech": 288.50260004401207,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 288.4258000412956,
+            "speech": 1960.5619999347255,
+            "stt_tail": 273.0354000814259,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 18.299612800008617,
+          "tools": [],
+          "transcript": "D MILK TO THE SHOPPING LIST",
+          "turn_id": "t0017"
+        },
+        {
+          "clip_id": "syn_b_cmd06",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "what is the weather like tomorrow",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "no_tool",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.4857000513002,
+            "fastpath": 0.00100000761449337,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 286.75359999760985,
+            "speech": 1760.870199999772,
+            "stt_tail": 283.56030001305044,
+            "tts_first_chunk": 63.73099994380027,
+            "wake": null
+          },
+          "started_at_s": 19.74094539997168,
+          "tools": [],
+          "transcript": "T IS THE WEATHER LIKE TO MORROW",
+          "turn_id": "t0018"
+        },
+        {
+          "clip_id": "syn_b_cmd07",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "tell me a short joke about robots",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "no_tool",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.9181999685243,
+            "fastpath": 0.000900006853044033,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 287.4470999231562,
+            "speech": 2240.85840000771,
+            "stt_tail": 273.73459993395954,
+            "tts_first_chunk": 78.14650004729629,
+            "wake": null
+          },
+          "started_at_s": 20.549216900020838,
+          "tools": [],
+          "transcript": "Y A SHORT JOKE ABOUT ROBUTS",
+          "turn_id": "t0019"
+        },
+        {
+          "clip_id": "syn_b_cmd08",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "how long do you boil an egg",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "no_tool",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.40910004079342,
+            "fastpath": 0.000800006091594696,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 274.1064000874758,
+            "speech": 1730.7791999774054,
+            "stt_tail": 263.3410000707954,
+            "tts_first_chunk": 64.93720004800707,
+            "wake": null
+          },
+          "started_at_s": 21.853814500034787,
+          "tools": [],
+          "transcript": "O BOIL AN EGG",
+          "turn_id": "t0020"
+        },
+        {
+          "clip_id": "syn_b_cmd09",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "is the garage door open",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "tool",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.92259999271482,
+            "fastpath": 0.000700005330145359,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 277.6302000274882,
+            "speech": 1640.6172999413684,
+            "stt_tail": 260.8133000321686,
+            "tts_first_chunk": 74.61940008215606,
+            "wake": null
+          },
+          "started_at_s": 23.157367800013162,
+          "tools": [],
+          "transcript": "S THE GARAGE DOOR OPEN",
+          "turn_id": "t0021"
+        },
+        {
+          "clip_id": "syn_b_cmd10",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "what is the temperature in the bedroom",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "tool",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 260.0427999859676,
+            "fastpath": 0.000600004568696022,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 283.7584000080824,
+            "speech": 2020.5894999671727,
+            "stt_tail": 270.249699940905,
+            "tts_first_chunk": 76.46839995868504,
+            "wake": null
+          },
+          "started_at_s": 23.925148000009358,
+          "tools": [],
+          "transcript": "S THE TEMPERATURE IN THE BEDROOM",
+          "turn_id": "t0022"
+        },
+        {
+          "clip_id": "syn_b_cmd11",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "lock the front door and dim the hallway",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "tool",
+          "speaker": "syn_b",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.9465000675991,
+            "fastpath": 0.000700005330145359,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 289.6843000780791,
+            "speech": 2470.3942999476567,
+            "stt_tail": 272.2262000897899,
+            "tts_first_chunk": 67.22560001071543,
+            "wake": null
+          },
+          "started_at_s": 25.151845499989577,
+          "tools": [],
+          "transcript": "T DOOR AND DIM THE HALLWAY",
+          "turn_id": "t0023"
+        },
+        {
+          "clip_id": "syn_c_cmd00",
+          "error": null,
+          "expected_transcript": "lights off",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "command_1s",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.67229994945228,
+            "fastpath": 0.00100000761449337,
+            "first_audio": 275.7204999215901,
+            "first_speech": 275.7204999215901,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 275.66129993647337,
+            "speech": 930.3981000557542,
+            "stt_tail": 262.72030000109226,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 26.307574599981308,
+          "tools": [],
+          "transcript": "S OFF",
+          "turn_id": "t0024"
+        },
+        {
+          "clip_id": "syn_c_cmd01",
+          "error": null,
+          "expected_transcript": "stop",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "command_1s",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.8757999856025,
+            "fastpath": 0.000800006091594696,
+            "first_audio": 274.5609999401495,
+            "first_speech": 274.5609999401495,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 274.499399936758,
+            "speech": 580.3298000246286,
+            "stt_tail": 260.94899990130216,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 27.514138899976388,
+          "tools": [],
+          "transcript": "",
+          "turn_id": "t0025"
+        },
+        {
+          "clip_id": "syn_c_cmd02",
+          "error": null,
+          "expected_transcript": "turn off the kitchen lights",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.48809994384646,
+            "fastpath": 0.000600004568696022,
+            "first_audio": 271.274899947457,
+            "first_speech": 271.274899947457,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 271.2220000103116,
+            "speech": 1570.6710000522435,
+            "stt_tail": 261.4755999529734,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 27.98053019994404,
+          "tools": [],
+          "transcript": "F THE KITCHEN LIGHTS",
+          "turn_id": "t0026"
+        },
+        {
+          "clip_id": "syn_c_cmd03",
+          "error": null,
+          "expected_transcript": "turn on the living room lamp",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.42369991913438,
+            "fastpath": 0.000600004568696022,
+            "first_audio": 276.47539996542037,
+            "first_speech": 276.47539996542037,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 276.4039000030607,
+            "speech": 1570.6849000416696,
+            "stt_tail": 262.2056999243796,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 28.369425499928184,
+          "tools": [],
+          "transcript": "URN ON THE LIVING ROOM LAM",
+          "turn_id": "t0027"
+        },
+        {
+          "clip_id": "syn_c_cmd04",
+          "error": null,
+          "expected_transcript": "set a timer for five minutes",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.70120006240904,
+            "fastpath": 0.0008998904377222061,
+            "first_audio": 282.5637999922037,
+            "first_speech": 282.5637999922037,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 282.39559999201447,
+            "speech": 1960.7746999245137,
+            "stt_tail": 270.6717000110075,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 29.822823100024834,
+          "tools": [],
+          "transcript": "ER FOR FIVE MINUTES",
+          "turn_id": "t0028"
+        },
+        {
+          "clip_id": "syn_c_cmd05",
+          "error": null,
+          "expected_transcript": "add milk to the shopping list",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "fast_path",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 260.5030999984592,
+            "fastpath": 0.000500003807246685,
+            "first_audio": 289.8867999901995,
+            "first_speech": 289.8867999901995,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 289.8245999822393,
+            "speech": 2020.415100036189,
+            "stt_tail": 272.84789993427694,
+            "tts_first_chunk": null,
+            "wake": null
+          },
+          "started_at_s": 30.21726890001446,
+          "tools": [],
+          "transcript": "D MILK TO THE SHOPPING LIST",
+          "turn_id": "t0029"
+        },
+        {
+          "clip_id": "syn_c_cmd06",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "what is the weather like tomorrow",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "no_tool",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 259.81630000751466,
+            "fastpath": 0.000800006091594696,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 287.3586999485269,
+            "speech": 1830.7000000495464,
+            "stt_tail": 281.89410001505166,
+            "tts_first_chunk": 69.75140003487468,
+            "wake": null
+          },
+          "started_at_s": 32.06660359993111,
+          "tools": [],
+          "transcript": "ER LIKE TO MORROW",
+          "turn_id": "t0030"
+        },
+        {
+          "clip_id": "syn_c_cmd07",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "tell me a short joke about robots",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "no_tool",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 260.1777999661863,
+            "fastpath": 0.000700005330145359,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 287.3476999811828,
+            "speech": 2240.4808999272063,
+            "stt_tail": 271.63760003168136,
+            "tts_first_chunk": 76.42759999725968,
+            "wake": null
+          },
+          "started_at_s": 32.52805650001392,
+          "tools": [],
+          "transcript": "Y A SHORT JOKE ABOUT ROBUTS",
+          "turn_id": "t0031"
+        },
+        {
+          "clip_id": "syn_c_cmd08",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "how long do you boil an egg",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "no_tool",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.81589999515563,
+            "fastpath": 0.000700005330145359,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 275.7718999637291,
+            "speech": 1730.4330000188202,
+            "stt_tail": 261.892499984242,
+            "tts_first_chunk": 78.06869992054999,
+            "wake": null
+          },
+          "started_at_s": 34.2557978000259,
+          "tools": [],
+          "transcript": "O BOIL AN EGG",
+          "turn_id": "t0032"
+        },
+        {
+          "clip_id": "syn_c_cmd09",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "is the garage door open",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "tool",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 249.90699999034405,
+            "fastpath": 0.000800006091594696,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 277.74279995355755,
+            "speech": 1670.6695000175387,
+            "stt_tail": 262.2618000023067,
+            "tts_first_chunk": 60.54029997903854,
+            "wake": null
+          },
+          "started_at_s": 35.133993400027975,
+          "tools": [],
+          "transcript": "S THE GARAGE DOOR OPEN",
+          "turn_id": "t0033"
+        },
+        {
+          "clip_id": "syn_c_cmd10",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "what is the temperature in the bedroom",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "tool",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 260.15720004215837,
+            "fastpath": 0.000700005330145359,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 286.00289998576045,
+            "speech": 2080.439499928616,
+            "stt_tail": 282.10810001473874,
+            "tts_first_chunk": 62.62049998622388,
+            "wake": null
+          },
+          "started_at_s": 36.34129260003101,
+          "tools": [],
+          "transcript": "T IS THE TEMPERATURE IN THE BEDROOM",
+          "turn_id": "t0034"
+        },
+        {
+          "clip_id": "syn_c_cmd11",
+          "error": "llm not live: first_speech not reported",
+          "expected_transcript": "lock the front door and dim the hallway",
+          "marks_ms": {},
+          "ok": true,
+          "scenario": "tool",
+          "speaker": "syn_c",
+          "speaker_identified": null,
+          "stages_ms": {
+            "ctx": null,
+            "endpoint": 260.0951000349596,
+            "fastpath": 0.000800006091594696,
+            "first_audio": null,
+            "first_speech": null,
+            "llm_first_sentence": null,
+            "llm_ttft": null,
+            "speaker_final": 287.5873000593856,
+            "speech": 2210.6847999384627,
+            "stt_tail": 271.63700002711266,
+            "tts_first_chunk": 73.62579996697605,
+            "wake": null
+          },
+          "started_at_s": 37.14480739994906,
+          "tools": [],
+          "transcript": "T DOOR AND DIM THE HALLWAY",
+          "turn_id": "t0035"
+        }
+      ]
+    },
+    "endpoint": {
+      "chosen_hangover_ms": 200,
+      "hangovers": {
+        "200": {
+          "hangover_ms": 200,
+          "n": 36,
+          "overrun_ms": {
+            "max": 187.00000000000028,
+            "mean": 143.6111111111112,
+            "min": 41.999999999999815,
+            "n": 36,
+            "p50": 156.00000000000014,
+            "p90": 174.5,
+            "p95": 184.00000000000017
+          },
+          "truncation_pct": 0.0
+        },
+        "250": {
+          "hangover_ms": 250,
+          "n": 36,
+          "overrun_ms": {
+            "max": 237.0000000000001,
+            "mean": 193.61111111111111,
+            "min": 91.99999999999986,
+            "n": 36,
+            "p50": 205.99999999999997,
+            "p90": 224.49999999999991,
+            "p95": 234.00000000000003
+          },
+          "truncation_pct": 0.0
+        },
+        "300": {
+          "hangover_ms": 300,
+          "n": 36,
+          "overrun_ms": {
+            "max": 286.99999999999994,
+            "mean": 243.61111111111111,
+            "min": 141.99999999999991,
+            "n": 36,
+            "p50": 256.0,
+            "p90": 274.4999999999999,
+            "p95": 283.9999999999999
+          },
+          "truncation_pct": 0.0
+        },
+        "400": {
+          "hangover_ms": 400,
+          "n": 36,
+          "overrun_ms": {
+            "max": 387.0,
+            "mean": 343.6111111111111,
+            "min": 241.99999999999977,
+            "n": 36,
+            "p50": 356.0000000000001,
+            "p90": 374.49999999999994,
+            "p95": 383.99999999999994
+          },
+          "truncation_pct": 0.0
+        }
+      },
+      "n_labelled": 36,
+      "notes": [],
+      "reason": null,
+      "status": "measured"
+    },
+    "llm": {
+      "access": "",
+      "cache_prefix_tokens": null,
+      "cache_read_seen": false,
+      "calls_made": 0,
+      "model_id": "",
+      "not_run": [],
+      "notes": [],
+      "probe_measurement": "",
+      "reason": "Bedrock probe not run: pass --llm-live (makes about 20 billed calls)",
+      "region": "",
+      "scenarios": {},
+      "status": "skipped",
+      "total_cost_usd": 0.0
+    },
+    "ram": {
+      "default": null,
+      "music": null,
+      "notes": [
+        "G4 needs 24 h with the default profile and again with music on"
+      ],
+      "reason": "RAM sampler needs Linux /proc/meminfo; skipped on this host",
+      "status": "skipped"
+    },
+    "speaker": {
+      "concurrent_stt": true,
+      "fp32": {
+        "clip_1s_embed_ms": {
+          "max": 16.75409998279065,
+          "mean": 14.324454998131841,
+          "min": 10.550100007094443,
+          "n": 40,
+          "p50": 14.591949991881847,
+          "p90": 16.333559912163764,
+          "p95": 16.419315000530332
+        },
+        "clip_2s_embed_ms": {
+          "max": 24.15179996751249,
+          "mean": 19.18007498316001,
+          "min": 16.453499905765057,
+          "n": 40,
+          "p50": 19.013850018382072,
+          "p90": 21.81335997302085,
+          "p95": 22.41494501940906
+        },
+        "eer_threshold": 0.7342888712882996,
+        "embedding_dim": 512,
+        "household_eer_pct": 51.19047619047619,
+        "model_id": "wespeaker-en-voxceleb-campp",
+        "n_clips": 40,
+        "n_speakers": 3,
+        "precision": "fp32"
+      },
+      "int8": null,
+      "notes": [
+        "int8 CAM++ not available: sherpa-onnx publishes no int8 export (G1 fallback experiment)"
+      ],
+      "reason": null,
+      "status": "measured",
+      "threads": 2
+    },
+    "stt": {
+      "decoding_method": "modified_beam_search",
+      "flush_silence_s": 0.3,
+      "max_active_paths": 4,
+      "model_id": "sherpa-onnx-streaming-zipformer-en-20m-2023-02-17",
+      "notes": [
+        "hotword WER not measured: this model export has no bpe.model for hotword encoding"
+      ],
+      "precision": "int8",
+      "reason": null,
+      "status": "measured",
+      "threads_1": {
+        "final_tail_ms": {
+          "max": 18.125500064343214,
+          "mean": 9.289869446850693,
+          "min": 6.0400000074878335,
+          "n": 36,
+          "p50": 8.700450067408383,
+          "p90": 11.341199977323413,
+          "p95": 15.579350001644343
+        },
+        "n_clips": 36,
+        "n_words": 198,
+        "rtf": {
+          "max": 0.03461976750538899,
+          "mean": 0.02711302369103559,
+          "min": 0.022197589044716918,
+          "n": 36,
+          "p50": 0.026944361577766716,
+          "p90": 0.03026550903575264,
+          "p95": 0.03174378289542021
+        },
+        "threads": 1,
+        "wer_hotwords_pct": null,
+        "wer_pct": 45.95959595959596
+      },
+      "threads_2": {
+        "final_tail_ms": {
+          "max": 15.338500030338764,
+          "mean": 7.9888499878709105,
+          "min": 5.291400011628866,
+          "n": 36,
+          "p50": 7.308499945793301,
+          "p90": 11.490899953059852,
+          "p95": 13.951175031252205
+        },
+        "n_clips": 36,
+        "n_words": 198,
+        "rtf": {
+          "max": 0.03328801423047997,
+          "mean": 0.023902619938426777,
+          "min": 0.016883308648446813,
+          "n": 36,
+          "p50": 0.02344492432208608,
+          "p90": 0.02637130657929022,
+          "p95": 0.02817340644641998
+        },
+        "threads": 2,
+        "wer_hotwords_pct": null,
+        "wer_pct": 45.95959595959596
+      }
+    },
+    "thermal": {
+      "duration_s": 0.0,
+      "during": "e2e",
+      "notes": [],
+      "reason": "thermal sampler needs vcgencmd (Raspberry Pi); skipped on this host",
+      "samples": 0,
+      "status": "skipped",
+      "temp_c": null,
+      "throttle_bits_union": null,
+      "throttled_0x4_seen": null
+    },
+    "tts": {
+      "default_voice": "en_US-lessac-low",
+      "notes": [],
+      "reason": null,
+      "status": "measured",
+      "threads": 2,
+      "voices": {
+        "en_US-lessac-low": {
+          "first_chunk_ms": {
+            "max": 173.0053999926895,
+            "mean": 119.89532001898624,
+            "min": 31.60890005528927,
+            "n": 20,
+            "p50": 125.5164000322111,
+            "p90": 158.02489002235234,
+            "p95": 162.80942999292165
+          },
+          "n_sentences": 20,
+          "rtf": {
+            "max": 0.04593835785949612,
+            "mean": 0.04098505362949496,
+            "min": 0.03401942154025074,
+            "n": 20,
+            "p50": 0.04151638924443048,
+            "p90": 0.045318104691510874,
+            "p95": 0.045837178508315965
+          },
+          "sample_rate": 16000,
+          "voice": "en_US-lessac-low"
+        }
+      }
+    },
+    "wake": {
+      "cpu_pct_of_core": 0.5584576739344349,
+      "false_accepts": 0,
+      "false_accepts_per_24h": 0.0,
+      "false_reject_pct_1m": 16.666666666666668,
+      "false_reject_pct_3m": 33.333333333333336,
+      "hit_latency_ms": {
+        "max": 100.99999999999997,
+        "mean": -1.6666666666666818,
+        "min": -122.00000000000011,
+        "n": 9,
+        "p50": 0.0,
+        "p90": 49.00000000000003,
+        "p95": 74.99999999999997
+      },
+      "model_id": "okay_nabu",
+      "n_positive_1m": 6,
+      "n_positive_3m": 6,
+      "notes": [
+        "stock hey_beepboop model not installed: measured with the pymicro-wakeword builtin 'Okay Nabu'; never a G5 result"
+      ],
+      "per_speaker": {
+        "syn_a": {
+          "false_reject_pct": 0.0,
+          "false_rejects": 0,
+          "n": 4
+        },
+        "syn_b": {
+          "false_reject_pct": 25.0,
+          "false_rejects": 1,
+          "n": 4
+        },
+        "syn_c": {
+          "false_reject_pct": 50.0,
+          "false_rejects": 2,
+          "n": 4
+        }
+      },
+      "probability_cutoff": 0.85,
+      "reason": null,
+      "sliding_window_size": 5,
+      "soak_hours": 0.009061527777777778,
+      "status": "measured",
+      "stock_model": false
+    }
+  },
+  "started_at": "2026-11-03T04:40:48.115751Z"
+}

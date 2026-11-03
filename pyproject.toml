@@ -1,0 +1,141 @@
+# beepboop uv workspace root.
+#
+# The root is a *virtual* project: it is never built or installed, it only
+# holds the workspace definition, the shared dev tooling and its config.
+# The installable packages are the workspace members below; they share the
+# single `uv.lock` next to this file (CLAUDE.md §3, ADR 0002).
+#
+#   uv sync --all-packages      install every member + dev tools from uv.lock
+#   uv run pytest               unit tests (live / hardware tests deselected)
+#   uv run ruff check --fix . && uv run ruff format . && uv run pyright
+
+[project]
+name = "beepboop-workspace"
+version = "0.0.0"
+description = "uv workspace root for beepboop (not a package)"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+# Depending on every member makes a plain `uv sync` (CONTRIBUTING §2) install
+# the whole workspace; `uv sync --all-packages` (CI) is equivalent.
+dependencies = ["beepboop", "beepboop-audio", "beepboop-bench"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "pytest-asyncio>=1.0",
+    "pytest-cov>=7.0",
+    "hypothesis>=6.140",
+    "aioresponses>=0.7.8",
+    "ruff>=0.17",
+    "pyright>=1.1.410",
+    "pre-commit>=4.0",
+    # Type stubs so pyright strict can see through untyped dependencies.
+    "boto3-stubs[bedrock-runtime,sts]>=1.40",
+    "types-pyyaml>=6.0",
+    "types-psutil>=7.0",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.uv.workspace]
+# tools/train_wakeword is deliberately NOT a member: its training stack is
+# heavy and laptop-only, so it carries its own dependency file.
+members = ["core", "audio", "tools/bench"]
+
+[tool.uv.sources]
+beepboop = { workspace = true }
+beepboop-audio = { workspace = true }
+beepboop-bench = { workspace = true }
+
+# ---------------------------------------------------------------- ruff --------
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+# docs/ holds spec + the module template (code against APIs that do not exist yet).
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "N",        # pep8-naming
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "A",        # shadowing builtins
+    "C4",       # comprehensions
+    "SIM",      # simplify
+    "RUF",      # ruff-specific
+    "ASYNC",    # async pitfalls (blocking calls on the event loop)
+    "S",        # bandit
+    "T20",      # no print (CLAUDE.md §5: structlog, never print)
+    "G",        # no f-strings / % formatting in log calls
+    "PTH",      # pathlib over os.path
+    "PT",       # pytest style
+    "TID",      # tidy imports
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106"]  # assert is how pytest works; fake secrets
+"tools/ci/**" = ["T201"]           # CI scripts report to stdout
+
+[tool.ruff.lint.isort]
+known-first-party = ["beepboop", "beepboop_audio", "beepboop_bench", "linkcheck", "import_ban"]
+
+[tool.ruff.format]
+line-ending = "lf"
+
+# -------------------------------------------------------------- pyright -------
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+include = ["core", "audio", "tools/bench", "tools/ci", "tools/probes", "deploy", "conftest.py"]
+exclude = ["**/.venv", "**/__pycache__", "docs", "tools/train_wakeword"]
+extraPaths = ["tools/ci"]
+reportMissingModuleSource = "warning"
+reportUnnecessaryTypeIgnoreComment = "error"
+
+# --------------------------------------------------------------- pytest -------
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = [
+    "core", "audio", "tools/bench", "tools/ci", "tools/probes", "deploy",
+    # Runs in the workspace venv (pydantic/pyyaml/structlog/numpy only); the
+    # heavy training stack is in its own lock and those tests skip without it.
+    "tools/train_wakeword/tests",
+]
+# importlib mode lets every package keep a plain tests/ dir without
+# __init__.py files or basename collisions between packages.
+addopts = [
+    "--import-mode=importlib",
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "-m", "not live and not hardware",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "conformance: provider conformance suite (CLAUDE.md §10); run with -m conformance",
+    "live: needs real network credentials (AWS, HA); deselected by default, run with -m live",
+    "hardware: needs a Raspberry Pi / XVF3800; deselected by default, run on the Pi with -m hardware",
+]
+filterwarnings = ["error"]
+
+# ------------------------------------------------------------- coverage -------
+
+[tool.coverage.run]
+branch = true
+source = ["beepboop", "beepboop_audio", "beepboop_bench"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\."]

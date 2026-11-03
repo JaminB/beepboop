@@ -1,0 +1,109 @@
+# Stand-alone training environment for the "Hey beepboop" microWakeWord model.
+#
+# This is NOT a member of the repo's uv workspace (root pyproject.toml excludes it
+# on purpose): the training stack (TensorFlow, PyTorch, Piper) is heavy, Linux-only
+# in practice and never ships on the Pi. Create its environment from inside this
+# directory; the lock file next to this file pins every version:
+#
+#   cd tools/train_wakeword
+#   uv sync                 # creates tools/train_wakeword/.venv from uv.lock
+#   uv run train-wakeword check
+#
+# Target platforms: Linux x86_64 (bare metal, WSL2 or Colab). GPU is optional;
+# the default torch wheels on PyPI carry CUDA on Linux. For a CPU-only install
+# add `--index https://download.pytorch.org/whl/cpu` for torch (see README §2).
+#
+# The two training-side tools are installed from git at pinned commits because
+# neither publishes a usable PyPI package for our purpose:
+#   - microwakeword: no PyPI release at all (pyproject version 0.1.0).
+#   - piper-sample-generator: the PyPI wheel omits `piper_train/`, which the
+#     multi-speaker `.pt` generator imports, so `make deps` clones the repo and
+#     step 01 runs it from that checkout (README §4.1).
+
+[project]
+name = "beepboop-train-wakeword"
+version = "0.1.0"
+description = "Reproducible training pipeline for the stock 'Hey beepboop' microWakeWord model"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+dependencies = [
+    # --- trainer (Apache-2.0) -------------------------------------------------
+    "microwakeword @ git+https://github.com/OHF-Voice/micro-wake-word@4665173cd35f1cff9a61e06fc427f124766c488e",
+    # microwakeword's setup.py lists `audio_metadata`; the PyPI release is broken on
+    # modern attrs, so the trainer's own notebook installs this fork at this commit.
+    "audio-metadata @ git+https://github.com/whatsnowplaying/audio-metadata@d4ebb238e6a401bb1a5aaaac60c9e2b3cb30929f",
+    "tensorflow>=2.18,<2.20",
+    "ai-edge-litert>=1.2",
+    "pymicro-features==2.0.2",
+    "mmap-ninja>=0.9",
+    "datasets>=3.0",
+    "webrtcvad-wheels>=2.0.14",
+    # --- sample generator deps (piper-sample-generator 3.2.0's own pins) ----------
+    # piper-tts is GPL-3.0-or-later: it runs only in this offline tool, never in a
+    # beepboop process (ADR 0009). The generated WAVs are not GPL.
+    "piper-tts==1.3.0",
+    "audiomentations==0.33.0",
+    "torch>=2,<3",
+    "torchaudio",
+    "webrtcvad",
+    # --- the Pi's inference library, used by 06_evaluate so numbers come from the
+    #     same code path the audio service runs (CLAUDE.md hard rule 8: exact pin)
+    "pymicro-wakeword==2.5.0",
+    # --- this pipeline ------------------------------------------------------------
+    "numpy>=2,<3",
+    "soundfile>=0.13",
+    "soxr>=0.5",
+    "pydantic>=2.11,<3",
+    "pyyaml>=6.0.2",
+    "structlog>=25",
+    "tqdm>=4.66",
+]
+
+[project.scripts]
+train-wakeword = "train_wakeword.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=9.0", "ruff>=0.17", "pyright>=1.1.410", "types-pyyaml>=6.0"]
+
+[tool.uv]
+# Linux only: ai-edge-litert and tensorflow>=2.11 have no native Windows wheels,
+# and the Pi never trains. Windows users run this under WSL2 (README §2).
+environments = ["sys_platform == 'linux'"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["train_wakeword"]
+
+# ------------------------------------------------------------------ tooling ------
+# The workspace root lints this directory (ruff) but excludes it from its pyright
+# run because the training deps are not in the workspace venv. This local config
+# lets `uv run pyright -p tools/train_wakeword` from the repo root check the
+# pipeline in strict mode anyway: the heavy libraries are imported only inside
+# `_vendor.py`, which is checked in basic mode (see its header).
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+
+[tool.ruff.lint]
+# `extend-` keeps the root's per-file ignores (tests may `assert`, CI scripts may print).
+extend-per-file-ignores = { "train_wakeword/*.py" = ["S603"], "scripts/*.py" = ["S603"] }
+# S603: subprocess calls are to sys.executable with argv lists built from the validated
+# config; there is no shell and no untrusted input (bandit's rule is a reminder only).
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+venvPath = "../.."
+venv = ".venv"
+include = ["train_wakeword", "scripts", "tests"]
+exclude = ["**/__pycache__", ".venv", "data", "third_party", "trained_models"]
+# Training-only libraries are absent from the workspace venv; `_vendor.py` is the
+# only module that imports them and it downgrades to basic mode at file level.
+# "none" rather than "warning" so the check is clean whether or not they are installed.
+reportMissingImports = "none"
+reportMissingModuleSource = "none"
+reportUnnecessaryTypeIgnoreComment = "error"

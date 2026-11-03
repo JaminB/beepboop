@@ -1,0 +1,134 @@
+# /srv/beepboop/deploy/compose.yaml
+#
+# The canonical deploy shape is docs/OPERATIONS.md §3; this file implements it and
+# must not drift from it (deploy/tests/test_deploy.py checks the invariants).
+#
+# - Image digests come from deploy/.env (template: deploy/.env.example). A missing
+#   digest is a hard error (`${VAR:?}`), so nothing ever runs from a floating tag.
+# - .env holds host, tier, locale, the RAM profile's memory caps and digests ONLY.
+#   Secrets never go here; they live envelope-encrypted in SQLite.
+# - Memory caps default to the 4 GB column of OPERATIONS §7; the 8 GB values are
+#   set in .env by install.sh --ram-profile 8g.
+name: beepboop
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
+services:
+  caddy:
+    image: ghcr.io/jaminb/beepboop-caddy@${BB_CADDY_DIGEST:?set BB_CADDY_DIGEST in deploy/.env}   # caddy:2 (+ dns module for Tier 1)
+    network_mode: host               # :80 CA helper + redirect, :443 UI/API/MCP, :8443 HA gate, :8445 Music Assistant gate
+    volumes:
+      - /srv/beepboop/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /srv/beepboop/caddy/data:/data             # holds the install.sh-generated Tier-0 root (OPERATIONS §4)
+      - /srv/beepboop/caddy/config:/config
+    environment:
+      BB_HOST: ${BB_HOST:-beepboop.local}
+      BB_TIER: ${BB_TIER:-0}
+    mem_limit: ${BB_MEM_CADDY:-64m}
+    cpuset: "0-1"
+    restart: unless-stopped
+    logging: *logging
+
+  core:
+    image: ghcr.io/jaminb/beepboop-core@${BB_CORE_DIGEST:?set BB_CORE_DIGEST in deploy/.env}
+    container_name: beepboop-core
+    network_mode: host               # binds 127.0.0.1:8080 only; talks to HA at 127.0.0.1:8123
+    environment:
+      BB_DATA: /data
+      BB_AUDIO_SOCKET: /run/beepboop/audio.sock
+      BB_HA_URL: ws://127.0.0.1:8123/api/websocket
+      BB_PUBLIC_URL: https://${BB_HOST:-beepboop.local}
+    volumes:
+      - /srv/beepboop/config/beepboop.yaml:/config/beepboop.yaml:ro   # household config file
+      - /srv/beepboop/core:/data                                      # beepboop.db + WAL
+      - /srv/beepboop/backups:/backups                                # VACUUM INTO target (OPERATIONS §10)
+      - /srv/beepboop/ha:/ha                                          # first-boot configuration.yaml, HA snapshot during updates
+      - /srv/beepboop/caddy/data/caddy/pki/authorities/local/root.crt:/caddy/root.crt:ro   # root cert only, for /ca
+      - /srv/beepboop/models:/models:ro                               # manifest + LICENSES only; core never loads weights
+      - /srv/beepboop/run:/hostrun:ro                                 # host.json from beepboop-host.timer (OPERATIONS §5)
+      - bb-run:/run/beepboop
+    devices: ["/dev/vcio:/dev/vcio"]             # Pi OTP device key -> KEK (DATA_AND_PRIVACY §6.3)
+    group_add: ["video"]
+    mem_limit: ${BB_MEM_CORE:-768m}              # 1g on 8 GB
+    cpuset: "0-1"
+    healthcheck:
+      test: ["CMD", "beepboop", "health", "--quiet"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    depends_on:
+      homeassistant: { condition: service_started }   # core tolerates HA being down; it must not block boot
+    restart: unless-stopped
+    logging: *logging
+
+  audio:
+    image: ghcr.io/jaminb/beepboop-audio@${BB_AUDIO_DIGEST:?set BB_AUDIO_DIGEST in deploy/.env}
+    container_name: beepboop-audio
+    network_mode: none               # PCM never leaves the process. Only text events cross the socket.
+    devices: ["/dev/snd:/dev/snd"]
+    group_add: ["audio"]
+    cap_add: ["SYS_NICE"]            # os.nice(-5); SCHED_FIFO for the ALSA capture thread
+    ulimits: { rtprio: 50, memlock: -1 }
+    volumes:
+      - /srv/beepboop/config/beepboop.yaml:/config/beepboop.yaml:ro   # provider selection reaches audio here, never as an event
+      - /srv/beepboop/models:/models:ro
+      - /srv/beepboop/audio:/data                # TTS clip cache, calibration; never captured audio
+      - bb-run:/run/beepboop
+    tmpfs: ["/tmp:size=64m"]                     # ring buffers live here, never on disk
+    environment:
+      BB_AUDIO_SOCKET: /run/beepboop/audio.sock
+      BB_ALSA_DEVICE: hw:XVF3800
+      BB_LOCALE: ${BB_LOCALE:-en-US}
+      OMP_NUM_THREADS: "2"
+    mem_limit: ${BB_MEM_AUDIO:-768m}             # 1g on 8 GB
+    memswap_limit: ${BB_MEM_AUDIO:-768m}         # equal to mem_limit: audio never swaps
+    cpuset: "2-3"
+    oom_score_adj: -500                          # the OOM killer takes HA before it takes audio
+    healthcheck:                                 # the capture thread touches the heartbeat file every 10 s
+      # $$ escapes compose interpolation; the container's sh sees a single $.
+      test: ["CMD", "sh", "-c", "test $$(( $$(date +%s) - $$(stat -c %Y /run/beepboop/audio.heartbeat) )) -lt 30"]
+      interval: 15s
+      timeout: 3s
+      retries: 2
+      start_period: 60s
+    restart: unless-stopped                      # beepboop-host.timer restarts any container Docker reports unhealthy
+    logging: *logging
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant@${BB_HA_DIGEST:?set BB_HA_DIGEST in deploy/.env}   # vetted 2026.10.x
+    container_name: homeassistant
+    network_mode: host               # discovery needs it; http is bound to 127.0.0.1 and the input chain drops :8123 from the LAN
+    volumes:
+      - /srv/beepboop/ha:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro       # Bluetooth integrations, optional
+    mem_limit: ${BB_MEM_HA:-1g}      # 2g on 8 GB; final cap decided by the M0 numbers
+    cpuset: "0-1"
+    cpu_shares: 512                  # below core (1024) and audio (default on its own cores)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8123/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    logging: *logging
+
+  # ---------- the one optional profile in v0.1: `docker compose --profile music up -d` ----------
+  music:
+    profiles: ["music"]              # required by the v0.1 `music` module
+    image: ghcr.io/music-assistant/server@${BB_MUSIC_DIGEST:?set BB_MUSIC_DIGEST in deploy/.env}
+    network_mode: host               # web UI bound to 127.0.0.1:8095; reached via Caddy :8445 (OPERATIONS §4). Stream port 8097 is in deploy/ports.yaml
+    volumes: ["/srv/beepboop/music:/data"]
+    mem_limit: ${BB_MEM_MUSIC:-512m}               # 768m on 8 GB
+    cpuset: "0-1"
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  bb-run:
+    driver: local
+    driver_opts: { type: tmpfs, device: tmpfs, o: "size=4m,mode=0770" }

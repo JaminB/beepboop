@@ -1,0 +1,16 @@
+# Bedrock provider manifest (docs/LLM_PROVIDERS.md §2.1). The settings JSON
+# Schema is rendered by System › LLM; its defaults are the only place the
+# default model ids live (model ids are configuration, never code literals).
+id: bedrock
+summary: "Claude on Amazon Bedrock (default)."
+license: Apache-2.0   # boto3
+settings:
+  type: object
+  properties:
+    region:          { type: string, default: us-east-1 }
+    model_fast:      { type: string, default: global.anthropic.claude-haiku-5-5 }
+    model_smart:     { type: string, default: global.anthropic.claude-sonnet-5-5 }
+    credentials:     { enum: [access_keys, bearer_token, ambient], default: access_keys }
+    guardrail_id:    { type: string }
+    guardrail_version: { type: string }
+secrets: [aws_access_key_id, aws_secret_access_key, bedrock_bearer_token]

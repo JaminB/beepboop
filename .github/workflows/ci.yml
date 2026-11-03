@@ -1,0 +1,88 @@
+# CI for every push to main and every pull request (CLAUDE.md §10).
+# Actions are pinned by commit SHA (hard rule 8); the comment is the tag.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"   # nightly: the synthetic bench (bench-synthetic job)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: lint, types, tests (x86)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install workspace from uv.lock
+        run: uv sync --all-packages --frozen
+      - name: ruff check
+        run: uv run --frozen ruff check --output-format=github .
+      - name: ruff format --check
+        run: uv run --frozen ruff format --check .
+      - name: pyright (strict)
+        run: uv run --frozen pyright
+      - name: pyright (strict) - tools/train_wakeword (own config, not a workspace member)
+        run: uv run --frozen pyright -p tools/train_wakeword
+      - name: pytest
+        run: uv run --frozen pytest
+
+  repo-checks:
+    name: doc links, import ban
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Markdown relative links and anchors
+        run: python tools/ci/linkcheck.py
+      - name: Module import ban (CLAUDE.md hard rule 2)
+        run: python tools/ci/import_ban.py
+
+  bench-synthetic:
+    # M0 step 6: the stage benchmarks end-to-end on x86 with TTS-generated clips.
+    # Never a gate result (tools/bench/synthetic/README.md). Nightly + manual only:
+    # ~225 MB of models (cached by manifest hash) plus a realtime e2e.
+    name: synthetic bench (x86, not a gate result)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install workspace incl. the bench-only phonemize extra
+        run: uv sync --all-packages --all-extras --frozen
+      - name: Cache model weights by manifest hash
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: models/_cache
+          key: models-${{ hashFiles('models/manifest.yaml') }}
+      - name: Fetch and verify the pinned models
+        run: uv run --frozen python -m beepboop_bench.models fetch
+      - name: LICENSES.md is generated from the manifest and clean
+        run: uv run --frozen python -m beepboop_bench.models licenses --check
+      - name: Synthetic bench (small corpus, 30 s realtime e2e)
+        run: uv run --frozen python tools/bench/synthetic/run.py --small --duration 30 --out bench-synthetic.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-synthetic-${{ github.run_id }}
+          path: bench-synthetic.json

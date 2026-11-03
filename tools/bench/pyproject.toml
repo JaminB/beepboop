@@ -1,0 +1,46 @@
+[project]
+name = "beepboop-bench"
+version = "0.0.0"
+description = "beepboop bench: concurrent pipeline benchmark and the M0 go/no-go gates"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+authors = [{ name = "beepboop contributors" }]
+# No console script of its own: it is reached as `beepboop bench ...`
+# (core's CLI mounts beepboop_bench.cli:app when this package is installed).
+dependencies = [
+    "beepboop",
+    "beepboop-audio",
+    "numpy>=2.1",
+    "pyyaml>=6.0.2",
+    "typer>=0.16",
+    "psutil>=7.0",
+    "rich>=14.0",
+]
+
+# sherpa-onnx >= 2.0 no longer bundles an espeak-ng frontend for Piper voices: text
+# must be phonemised outside the runtime (GenerationConfig.phoneme_codepoints).
+# piper-phonemize wraps espeak-ng (GPL-3.0), so it is a *bench-only* optional extra,
+# installed with `uv sync --all-packages --all-extras`; it is never part of the audio
+# image (ADR 0009). Wheels come from k2-fsa's index (cp312: win_amd64, manylinux
+# x86_64 and aarch64). Without it, `bench tts` and the synthetic corpus are skipped.
+[project.optional-dependencies]
+phonemize = ["piper-phonemize>=1.5.0"]
+
+[tool.uv.sources]
+beepboop = { workspace = true }
+beepboop-audio = { workspace = true }
+piper-phonemize = { index = "k2-fsa-piper-phonemize" }
+
+[[tool.uv.index]]
+name = "k2-fsa-piper-phonemize"
+url = "https://k2-fsa.github.io/icefall/piper_phonemize.html"
+format = "flat"
+explicit = true
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["beepboop_bench"]

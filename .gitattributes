@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.wav binary
+*.onnx binary
+*.tflite binary
+*.png binary
+*.jpg binary

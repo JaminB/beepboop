@@ -1,0 +1,339 @@
+{
+  "access": "ok",
+  "cache_prefix_tokens": 2388,
+  "cache_read_seen": true,
+  "calls_made": 16,
+  "config": {
+    "cold_gap_s": 360.0,
+    "max_calls": 20,
+    "max_tokens": 60,
+    "model_id": "global.anthropic.claude-haiku-5-5",
+    "pairs": 5,
+    "region": "us-west-2"
+  },
+  "environment": {
+    "beepboop": "0.0.0",
+    "boto3": "1.43.123",
+    "botocore": "1.43.123",
+    "machine": "AMD64",
+    "os": "Windows 11",
+    "python": "3.12.10"
+  },
+  "finished_at": "2026-11-03T03:49:31.581578Z",
+  "host": "workstation",
+  "label": "preliminary, x86 workstation on the owner's home connection, NOT the Pi gate measurement",
+  "measurement": "preliminary",
+  "not_run": [],
+  "notes": [
+    "Synthetic-free but NOT a gate result: x86 Windows 11 workstation on the owner's home connection, AWS region us-west-2, not the Pi 4. G3 must be measured on the Pi.",
+    "ttft_ms = adapter time from request sent to the first content event (ToolCallStart for *_first calls, TextDelta for *_second calls).",
+    "Post-hoc annotation (2026-11-02, numbers unchanged): in this run warm() failed on every call (HTTPClientError, a bug in the prime request, fixed afterwards). So 'prewarmed_fresh_client' was NOT pre-warmed (it equals a second cold-TLS sample), and the warm_* pairs ran on a pool kept hot by the previous call, not by warm().",
+    "Post-hoc annotation: cold_cache_first failed with ReadTimeoutError (10 s read timeout) after the 6-minute idle gap: the reused keep-alive connection had gone stale (likely dropped silently by NAT). No retry by design. warm() now clears the pool before priming. The cold-cache scenario has NO valid sample in this file; re-run it.",
+    "Live calls: 16 by this probe plus 2 earlier calls to record the conformance fixtures; total cost about USD 0.0011 by pricing.yaml (rows marked verify)."
+  ],
+  "samples": [
+    {
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 2388,
+      "cost_usd": 0.0003375,
+      "error": null,
+      "first_text_ms": null,
+      "input_tokens": 115,
+      "output_tokens": 55,
+      "scenario": "cold_tls_cache_write",
+      "stop_reason": "tool_use",
+      "tool_called": "home.turn_off",
+      "total_ms": 1227,
+      "ttft_ms": 1129
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 4.988e-05,
+      "error": null,
+      "first_text_ms": 1010,
+      "input_tokens": 200,
+      "output_tokens": 12,
+      "scenario": "warm_second_tool_result",
+      "stop_reason": "end_turn",
+      "tool_called": null,
+      "total_ms": 1015,
+      "ttft_ms": 1010
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 6.288e-05,
+      "error": null,
+      "first_text_ms": null,
+      "input_tokens": 115,
+      "output_tokens": 55,
+      "scenario": "warm_first",
+      "stop_reason": "tool_use",
+      "tool_called": "home.turn_off",
+      "total_ms": 1205,
+      "ttft_ms": 1126
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 4.988e-05,
+      "error": null,
+      "first_text_ms": 993,
+      "input_tokens": 200,
+      "output_tokens": 12,
+      "scenario": "warm_second_tool_result",
+      "stop_reason": "end_turn",
+      "tool_called": null,
+      "total_ms": 1002,
+      "ttft_ms": 993
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 6.288e-05,
+      "error": null,
+      "first_text_ms": null,
+      "input_tokens": 115,
+      "output_tokens": 55,
+      "scenario": "warm_first",
+      "stop_reason": "tool_use",
+      "tool_called": "home.turn_off",
+      "total_ms": 1201,
+      "ttft_ms": 1116
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 4.988e-05,
+      "error": null,
+      "first_text_ms": 1499,
+      "input_tokens": 200,
+      "output_tokens": 12,
+      "scenario": "warm_second_tool_result",
+      "stop_reason": "end_turn",
+      "tool_called": null,
+      "total_ms": 1516,
+      "ttft_ms": 1498
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 6.288e-05,
+      "error": null,
+      "first_text_ms": null,
+      "input_tokens": 115,
+      "output_tokens": 55,
+      "scenario": "warm_first",
+      "stop_reason": "tool_use",
+      "tool_called": "home.turn_off",
+      "total_ms": 1311,
+      "ttft_ms": 1215
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 4.988e-05,
+      "error": null,
+      "first_text_ms": 1127,
+      "input_tokens": 200,
+      "output_tokens": 12,
+      "scenario": "warm_second_tool_result",
+      "stop_reason": "end_turn",
+      "tool_called": null,
+      "total_ms": 1137,
+      "ttft_ms": 1127
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 6.288e-05,
+      "error": null,
+      "first_text_ms": null,
+      "input_tokens": 115,
+      "output_tokens": 55,
+      "scenario": "warm_first",
+      "stop_reason": "tool_use",
+      "tool_called": "home.turn_off",
+      "total_ms": 1163,
+      "ttft_ms": 1125
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 4.988e-05,
+      "error": null,
+      "first_text_ms": 966,
+      "input_tokens": 200,
+      "output_tokens": 12,
+      "scenario": "warm_second_tool_result",
+      "stop_reason": "end_turn",
+      "tool_called": null,
+      "total_ms": 986,
+      "ttft_ms": 966
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 6.288e-05,
+      "error": null,
+      "first_text_ms": null,
+      "input_tokens": 115,
+      "output_tokens": 55,
+      "scenario": "warm_first",
+      "stop_reason": "tool_use",
+      "tool_called": "home.turn_off",
+      "total_ms": 1105,
+      "ttft_ms": 1037
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 4.988e-05,
+      "error": null,
+      "first_text_ms": 981,
+      "input_tokens": 200,
+      "output_tokens": 12,
+      "scenario": "warm_second_tool_result",
+      "stop_reason": "end_turn",
+      "tool_called": null,
+      "total_ms": 997,
+      "ttft_ms": 981
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 6.288e-05,
+      "error": null,
+      "first_text_ms": null,
+      "input_tokens": 115,
+      "output_tokens": 55,
+      "scenario": "cold_tls_fresh_client",
+      "stop_reason": "tool_use",
+      "tool_called": "home.turn_off",
+      "total_ms": 1614,
+      "ttft_ms": 1562
+    },
+    {
+      "cache_read_tokens": 2388,
+      "cache_write_tokens": 0,
+      "cost_usd": 6.288e-05,
+      "error": null,
+      "first_text_ms": null,
+      "input_tokens": 115,
+      "output_tokens": 55,
+      "scenario": "prewarmed_fresh_client",
+      "stop_reason": "tool_use",
+      "tool_called": "home.turn_off",
+      "total_ms": 1594,
+      "ttft_ms": 1524
+    },
+    {
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "cost_usd": null,
+      "error": "Unavailable: ReadTimeoutError: Read timeout on endpoint URL: \"https://bedrock-runtime.us-west-2.amazonaws.com/model/global.anthropic.claude-haiku-5-5/converse-stream\"",
+      "first_text_ms": null,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "scenario": "cold_cache_first",
+      "stop_reason": null,
+      "tool_called": null,
+      "total_ms": null,
+      "ttft_ms": null
+    }
+  ],
+  "schema_version": 1,
+  "started_at": "2026-11-03T03:43:02.101651Z",
+  "summary": {
+    "cold_cache_first": {},
+    "cold_tls_cache_write": {
+      "total_ms": {
+        "max": 1227.0,
+        "min": 1227.0,
+        "n": 1,
+        "p50": 1227.0,
+        "p95": 1227.0
+      },
+      "ttft_ms": {
+        "max": 1129.0,
+        "min": 1129.0,
+        "n": 1,
+        "p50": 1129.0,
+        "p95": 1129.0
+      }
+    },
+    "cold_tls_fresh_client": {
+      "total_ms": {
+        "max": 1614.0,
+        "min": 1614.0,
+        "n": 1,
+        "p50": 1614.0,
+        "p95": 1614.0
+      },
+      "ttft_ms": {
+        "max": 1562.0,
+        "min": 1562.0,
+        "n": 1,
+        "p50": 1562.0,
+        "p95": 1562.0
+      }
+    },
+    "prewarmed_fresh_client": {
+      "total_ms": {
+        "max": 1594.0,
+        "min": 1594.0,
+        "n": 1,
+        "p50": 1594.0,
+        "p95": 1594.0
+      },
+      "ttft_ms": {
+        "max": 1524.0,
+        "min": 1524.0,
+        "n": 1,
+        "p50": 1524.0,
+        "p95": 1524.0
+      }
+    },
+    "warm_first": {
+      "total_ms": {
+        "max": 1311.0,
+        "min": 1105.0,
+        "n": 5,
+        "p50": 1201.0,
+        "p95": 1289.8
+      },
+      "ttft_ms": {
+        "max": 1215.0,
+        "min": 1037.0,
+        "n": 5,
+        "p50": 1125.0,
+        "p95": 1197.2
+      }
+    },
+    "warm_second_tool_result": {
+      "first_text_ms": {
+        "max": 1499.0,
+        "min": 966.0,
+        "n": 6,
+        "p50": 1001.5,
+        "p95": 1406.0
+      },
+      "total_ms": {
+        "max": 1516.0,
+        "min": 986.0,
+        "n": 6,
+        "p50": 1008.5,
+        "p95": 1421.2
+      },
+      "ttft_ms": {
+        "max": 1498.0,
+        "min": 966.0,
+        "n": 6,
+        "p50": 1001.5,
+        "p95": 1405.2
+      }
+    }
+  },
+  "total_cost_usd": 0.001077
+}

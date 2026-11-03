@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# uv / virtualenvs (uv.lock IS committed)
+.venv/
+venv/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Model weights are downloaded at install; only the manifest and licences are tracked
+models/*
+!models/manifest.yaml
+!models/LICENSES.md
+*.onnx
+*.tflite
+
+# Bench corpus is recorded on the owner's bench machine (never on a beepboop device, ADR 0018) and never committed (results/ is)
+tools/bench/corpus/
+
+# Probe scratch data (keys + secrets DB written by the V2/V5 probes)
+v2-data/
+v5-data/
+
+# Web UI
+node_modules/
+ui/build/
+ui/.svelte-kit/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

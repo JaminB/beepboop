@@ -1,0 +1,114 @@
+{
+  "events": [
+    {
+      "event": {
+        "messageStart": {
+          "role": "assistant"
+        }
+      },
+      "t_ms": 1105
+    },
+    {
+      "event": {
+        "contentBlockStart": {
+          "contentBlockIndex": 0,
+          "start": {
+            "toolUse": {
+              "name": "home__turn_off",
+              "toolUseId": "tooluse_NLR45f4lDjJFjJLpoocvuf",
+              "type": "tool_use"
+            }
+          }
+        }
+      },
+      "t_ms": 1105
+    },
+    {
+      "event": {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "toolUse": {
+              "input": ""
+            }
+          }
+        }
+      },
+      "t_ms": 1105
+    },
+    {
+      "event": {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "toolUse": {
+              "input": "{\"target\": \""
+            }
+          }
+        }
+      },
+      "t_ms": 1147
+    },
+    {
+      "event": {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "toolUse": {
+              "input": "kitc"
+            }
+          }
+        }
+      },
+      "t_ms": 1147
+    },
+    {
+      "event": {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "toolUse": {
+              "input": "hen lights\"}"
+            }
+          }
+        }
+      },
+      "t_ms": 1147
+    },
+    {
+      "event": {
+        "contentBlockStop": {
+          "contentBlockIndex": 0
+        }
+      },
+      "t_ms": 1147
+    },
+    {
+      "event": {
+        "messageStop": {
+          "stopReason": "tool_use"
+        }
+      },
+      "t_ms": 1147
+    },
+    {
+      "event": {
+        "metadata": {
+          "metrics": {
+            "latencyMs": 1038
+          },
+          "usage": {
+            "inputTokens": 402,
+            "outputTokens": 55,
+            "totalTokens": 457
+          }
+        }
+      },
+      "t_ms": 1147
+    }
+  ],
+  "model_id": "global.anthropic.claude-haiku-5-5",
+  "note": "real ConverseStream events from conformance.tool_request(); t_ms is wall time on the x86 workstation, informational only",
+  "recorded": "2026-11-02",
+  "region": "us-west-2"
+}

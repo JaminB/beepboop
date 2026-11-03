@@ -1,0 +1,34 @@
+# deploy/ports.yaml -- the listening-port registry and firewall allowlist.
+#
+# docs/OPERATIONS.md §2 step 8 owns the policy: nftables input is default-deny;
+# `base` is always open, each enabled Compose profile opens its own entries, and
+# user-managed HA companions (MQTT, Z-Wave JS UI, Matter server) are declared by
+# the user under `user`. `beepboop doctor` flags any listening non-loopback
+# socket that is not in this file. `loopback_only` documents sockets that must
+# never be reachable from the LAN (doctor fails if they bind a LAN address).
+#
+# deploy/nftables/beepboop.nft carries `base` literally; install.sh adds the
+# enabled profiles' and the user's ports to the `lan_tcp` / `lan_udp` sets.
+# deploy/tests/test_deploy.py keeps the two files in step.
+schema: 1
+
+base:
+  - { port: 22,   proto: tcp, service: host,  reason: "SSH administration" }
+  - { port: 80,   proto: tcp, service: caddy, reason: "/ca helper (plain HTTP) and redirect to HTTPS" }
+  - { port: 443,  proto: tcp, service: caddy, reason: "web UI, /api, /confirm (v0.2: /mcp, /oauth)" }
+  - { port: 8443, proto: tcp, service: caddy, reason: "admin-gated Home Assistant UI (break-glass)" }
+  - { port: 8445, proto: tcp, service: caddy, reason: "admin-gated Music Assistant UI" }
+  - { port: 5353, proto: udp, service: host,  reason: "mDNS (avahi) for beepboop.local" }
+
+profiles:
+  music:
+    - { port: 8097, proto: tcp, service: music, reason: "Music Assistant audio stream to LAN players" }
+
+# Ports of user-managed HA companions go here, each with a reason.
+user: []
+
+loopback_only:
+  - { port: 8080, proto: tcp, service: core,          reason: "FastAPI; reached only through Caddy" }
+  - { port: 8123, proto: tcp, service: homeassistant, reason: "HA http; server_host 127.0.0.1 + nftables drop (V1)" }
+  - { port: 2019, proto: tcp, service: caddy,         reason: "Caddy admin API (Caddy default, localhost)" }
+  - { port: 8095, proto: tcp, service: music,         reason: "Music Assistant web UI; reached via Caddy :8445" }

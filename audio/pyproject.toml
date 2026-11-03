@@ -1,0 +1,32 @@
+[project]
+name = "beepboop-audio"
+version = "0.0.0"
+description = "beepboop audio service: wake word, VAD, speaker ID, STT, TTS behind the event socket"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+authors = [{ name = "beepboop contributors" }]
+# sherpa-onnx and pymicro-wakeword are pinned exactly (CLAUDE.md hard rule 8,
+# VOICE_PIPELINE §1, ADR 0009). Both publish cp312 wheels for win_amd64,
+# manylinux x86_64 and manylinux aarch64, so no platform markers are needed.
+dependencies = [
+    "pydantic>=2.11,<3",
+    "structlog>=25.0",
+    "numpy>=2.1",
+    "sherpa-onnx==2.0.1",
+    "pymicro-wakeword==2.5.0",
+    "soundfile>=0.13",
+]
+
+[project.scripts]
+beepboop-audio = "beepboop_audio.cli:main"
+
+# Provider entry-point groups (VOICE_PIPELINE §17): beepboop.wake_providers,
+# beepboop.speaker_providers, beepboop.stt_providers, beepboop.tts_providers.
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["beepboop_audio"]

@@ -1,0 +1,7 @@
+# USD per million tokens, per Bedrock model id (docs/LLM_PROVIDERS.md §10).
+# `verified` is the date the row was last checked; rows marked `verify: true`
+# come from the research report, not the Bedrock price list. Check against
+# https://aws.amazon.com/bedrock/pricing/ before relying on them.
+global.anthropic.claude-haiku-5-5:  {in: 0.10, out: 0.50, cache_read: 0.01, cache_write_5m: 0.125, cache_write_1h: 0.20, verified: 2026-11-01, verify: true}
+global.anthropic.claude-sonnet-5-5: {in: 2.00, out: 10.00, cache_read: 0.10, cache_write_5m: 2.50, cache_write_1h: 4.00, verified: 2026-11-01, verify: true}
+global.anthropic.claude-haiku-4-5-20251001-v1:0: {in: 1.00, out: 5.00, cache_read: 0.10, cache_write_5m: 1.25, cache_write_1h: 2.00, verified: 2026-11-02, verify: true}

@@ -63,6 +63,34 @@ The gate thresholds below (G1–G7) are the **only** place gate numbers live. Ot
 
 **Out of scope.** Any user-facing feature, the web UI, modules, policy enforcement, enrollment UX. M0 code is allowed to be throwaway except `tools/`, the event models and the Bedrock provider.
 
+**Status (2026-11-03).** Every session-doable step is code-done and green on x86 (`ruff`, `pyright` strict, `pytest`, link check). **No gate (G1–G7) and no verification item (V1–V5) has a result yet**: each needs the Pi, the XVF3800 or a human, and is pending the owner. The ordered owner procedure is [tools/M0_OWNER_CHECKLIST.md](../tools/M0_OWNER_CHECKLIST.md).
+
+| Step ([CLAUDE.md §12](../CLAUDE.md#12-what-to-do-first-m0)) | Status | Code | Owner action / README |
+|---|---|---|---|
+| 1 Scaffold | done | `pyproject.toml`, `core/`, `audio/`, `tools/ci/`, `.github/workflows/ci.yml` | — |
+| 2 Event protocol | done | [`audio/beepboop_audio/events/`](../audio/beepboop_audio/events/README.md) | — (on the Pi: check the `/run/beepboop` socket is shared between core and audio) |
+| 3 Compose skeleton | code-done, pending owner (V1) | [`deploy/`](../deploy/README.md) | [`tools/probes/ha_bind/`](../tools/probes/ha_bind/README.md) |
+| 4 Wake-word pipeline | code-done, pending owner (training run) | [`tools/train_wakeword/`](../tools/train_wakeword/README.md) | train, publish `hey_beepboop_v1`, pin it in `models/manifest.yaml` |
+| 5 Bench harness | done (harness); gate runs are step 10 | [`tools/bench/`](../tools/bench/README.md) | — |
+| 6 Synthetic CI bench | done | [`tools/bench/synthetic/`](../tools/bench/synthetic/README.md), `bench-synthetic` CI job (nightly) | — |
+| 7 Bedrock TTFT probe | code-done; conformance (text streaming, cancellation) passes; **G3 pending owner** | [`core/beepboop/providers/llm/`](../core/beepboop/providers/llm/README.md) | `beepboop llm probe --gate` on the Pi ([bedrock README](../core/beepboop/providers/llm/bedrock/README.md)) |
+| 8 HA headless onboarding | code-done, pending owner (V2) | [`core/beepboop/ha/`](../core/beepboop/ha/README.md), [`core/beepboop/secrets/`](../core/beepboop/secrets/README.md) | [`tools/probes/ha_onboarding/verify_v2.md`](../tools/probes/ha_onboarding/verify_v2.md) |
+| 9 Fixture corpus | blocked on owner (XVF3800 + people) | `tools/bench/record_fixture.py` | [`tools/bench/README.md`](../tools/bench/README.md#pending-on-hardware-owner-actions) |
+| 10 Bench runs (G1–G6) | blocked on owner (Pi + corpus) | `beepboop bench all --gates` | [`tools/bench/README.md`](../tools/bench/README.md#pending-on-hardware-owner-actions) |
+| 11 Hardware probes (V3, V4, V5) | code-done, pending owner | `beepboop bench aec`, `tools/probes/alsa_soak/`, `tools/probes/otp_kek/` | [aec_reference](../tools/probes/aec_reference/README.md), [alsa_soak](../tools/probes/alsa_soak/README.md), [otp_kek](../tools/probes/otp_kek/README.md) |
+| 12 Thermal (G7) | code-done, pending owner | `beepboop bench thermal`, `tools/probes/thermal_g7/` | [thermal_g7](../tools/probes/thermal_g7/README.md) |
+
+Result files so far. **Neither is a gate result**; they are cited only as they label themselves:
+
+- [`tools/bench/results/2026-11-02-workstation-g3-preliminary.json`](../tools/bench/results/2026-11-02-workstation-g3-preliminary.json): *"preliminary, x86 workstation on the owner's home connection, NOT the Pi gate measurement"*. Haiku 5.5 via `global.` inference profile, us-west-2, 16 calls. Warm first-call TTFT p50 1125 ms (n = 5); second (cached, tool-result) call TTFT p50 1002 ms (n = 6); prompt cache read seen. There is no valid cold-cache sample (a stale pooled connection hit the read timeout) and no valid pre-warm sample (`warm()` bug, since fixed); see the file's `notes`.
+- [`tools/bench/results/2026-11-03-desktop-n9qe44h-synthetic.json`](../tools/bench/results/2026-11-03-desktop-n9qe44h-synthetic.json): *"synthetic / x86 / not a gate result"* (Windows 11 x86_64, TTS-generated corpus). Gate evaluator output: G1, G2, G5, G6 `incomplete` (run preconditions unmet: not a Pi, synthetic corpus, no HA), G3, G4, G7 `skipped`; nothing `pass`.
+
+Spec findings from M0 so far that need a doc or contract decision (from the step builders; details in each package README):
+
+- CAM++ (both sherpa-onnx English VoxCeleb exports) outputs **512-d** embeddings, not the 192-d of [VOICE_PIPELINE §8.1](VOICE_PIPELINE.md); the event protocol currently pins `EMBEDDING_DIM = 192`.
+- sherpa-onnx ≥ 2.0 has no built-in espeak-ng frontend for Piper voices; the product TTS path needs a phonemiser decision (piper-phonemize is GPL-3.0; the bench uses it as a dev-only extra).
+- `core` does not yet depend on `beepboop-audio`; how core's image gets `beepboop_audio.events` without the speech runtimes is open (split the protocol into its own light package, or move the runtimes to an extra).
+
 ---
 
 ## v0.1: One house that knows your voice

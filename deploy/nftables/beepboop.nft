@@ -1,0 +1,52 @@
+#!/usr/sbin/nft -f
+# deploy/nftables/beepboop.nft -- beepboop's host firewall (inbound default-deny).
+#
+# Policy owner: docs/OPERATIONS.md §2 step 8; the :8123 rule is HOME_ASSISTANT §2.1
+# layer 2 (the backstop behind HA's own server_host: 127.0.0.1, M0 item V1).
+# install.sh loads it from /etc/nftables.conf with `include`; this file never
+# runs `flush ruleset`, so Docker's own tables are left alone. It only replaces
+# its own table, so `nft -f` is idempotent.
+#
+# Allowlist source: deploy/ports.yaml. `base` is literal below; install.sh adds
+# the enabled profiles' and user-declared ports with e.g.
+#   nft add element inet beepboop lan_tcp '{ 8097 }'
+
+table inet beepboop
+delete table inet beepboop
+
+table inet beepboop {
+	set lan_tcp {
+		type inet_service
+		comment "profile + user ports from deploy/ports.yaml (filled by install.sh)"
+	}
+	set lan_udp {
+		type inet_service
+		comment "profile + user ports from deploy/ports.yaml (filled by install.sh)"
+	}
+
+	chain input {
+		type filter hook input priority 0; policy drop;
+
+		iifname "lo" accept
+		# Before anything else, so no set entry or established state can re-open it.
+		tcp dport 8123 drop comment "Home Assistant is loopback-only; use beepboop"
+		ct state established,related accept
+		ct state invalid drop
+
+		# ICMP needed for IPv4 path MTU and IPv6 neighbour discovery (not in ports.yaml:
+		# not a listening socket, but IPv6 breaks without it).
+		ip protocol icmp icmp type { echo-request, destination-unreachable, time-exceeded } accept
+		ip6 nexthdr ipv6-icmp accept
+		ip6 saddr fe80::/10 udp dport 546 accept comment "DHCPv6 client replies"
+
+		# deploy/ports.yaml `base`
+		tcp dport 22 accept comment "SSH"
+		tcp dport { 80, 443 } accept comment "Caddy: /ca + redirect, web UI/API"
+		tcp dport { 8443, 8445 } accept comment "Caddy admin gates: HA, Music Assistant"
+		udp dport 5353 accept comment "mDNS (avahi)"
+
+		# deploy/ports.yaml `profiles` (enabled ones) and `user`
+		tcp dport @lan_tcp accept
+		udp dport @lan_udp accept
+	}
+}

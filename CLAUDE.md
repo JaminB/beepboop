@@ -17,7 +17,7 @@ Related: [README.md](README.md) · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 
 
 ## 2. Current phase
 
-**Spec phase → M0 next.** No product code exists. Everything under `docs/` is the specification. The next unit of work is **M0: prove the Pi** (see §12). Do not start v0.1 feature work until the M0 gates (G1–G7, [docs/ROADMAP.md](docs/ROADMAP.md)) have passed on real hardware; if a gate fails the design changes (cloud STT default or 8 GB minimum), and v0.1 code written before that would be wasted.
+**M0 in progress: code done, hardware pending (2026-11-03).** Everything under `docs/` is still the specification. All session-doable M0 steps (§12) are built and green on x86; every gate (G1–G7) and verification item (V1–V5) is waiting on the owner with the Pi. The owner's ordered to-do list is [tools/M0_OWNER_CHECKLIST.md](tools/M0_OWNER_CHECKLIST.md); the dated status table is in [docs/ROADMAP.md](docs/ROADMAP.md#m0-prove-the-pi). Do not start v0.1 feature work until the M0 gates have passed on real hardware; if a gate fails the design changes (cloud STT default or 8 GB minimum), and v0.1 code written before that would be wasted.
 
 ## 3. Repository layout
 
@@ -146,7 +146,7 @@ The template, numbering, statuses and process live in one place: [docs/adr/READM
 
 ## 9. Command registry
 
-None of these exist yet. Build them with these names so docs, CI and habits converge. This table is the complete list of `beepboop` commands used anywhere in the docs; if you add a command, add a row. **Host** commands run from `/usr/local/bin/beepboop`, a host script that runs its own subcommands and forwards everything else into core with `docker compose -f /srv/beepboop/deploy/compose.yaml exec core beepboop ...` ([docs/OPERATIONS.md §5](docs/OPERATIONS.md)). **Core** commands run inside the core container (or via `uv run` in development). No container mounts `docker.sock`.
+Most of these do not exist yet; as of M0 only `version`, `bench` and `llm probe` (and `beepboop-audio version`) do. Build the rest with these names so docs, CI and habits converge. This table is the complete list of `beepboop` commands used anywhere in the docs; if you add a command, add a row. **Host** commands run from `/usr/local/bin/beepboop`, a host script that runs its own subcommands and forwards everything else into core with `docker compose -f /srv/beepboop/deploy/compose.yaml exec core beepboop ...` ([docs/OPERATIONS.md §5](docs/OPERATIONS.md)). **Core** commands run inside the core container (or via `uv run` in development). No container mounts `docker.sock`.
 
 | Command | Runs on | Purpose | Owning doc |
 |---|---|---|---|
@@ -158,12 +158,14 @@ None of these exist yet. Build them with these names so docs, CI and habits conv
 | `beepboop models verify \| update` | host | Verify sha256 of `/srv/beepboop/models` against `models/manifest.yaml`; `update` re-downloads and re-verifies | [OPERATIONS §13](docs/OPERATIONS.md#13-model-and-licensing-hygiene) |
 | `beepboop serve` | core (dev) | Run core locally (FastAPI + agent + registry) against a dev SQLite file | this file |
 | `beepboop-audio serve [--fake-mic <wav>]` | audio (dev) | Run the audio service; `--fake-mic` feeds a file instead of ALSA | [VOICE_PIPELINE](docs/VOICE_PIPELINE.md) |
+| `beepboop version`, `beepboop-audio version` | core, audio | Print the installed workspace package versions (support and bug reports) | this file |
 | `beepboop health [--quiet]` | core | Health probe used by the compose healthcheck and `/api/health` | [OPERATIONS §11](docs/OPERATIONS.md#11-observability) |
 | `beepboop chat --as <profile> [--dry-run] [--trace]` | core | Text chat through the real policy path, no mic. The primary dev loop | [MODULES §13](docs/MODULES.md) |
 | `beepboop module new <id>` | core | Scaffold `modules/<id>/` from `docs/module-template/` | [MODULES §13](docs/MODULES.md) |
 | `beepboop module check <id\|path\|--all> [--llm]` | core | Lint L1–L15, token lint, import ban, evals (dry-run; `--llm` live) | [MODULES §13](docs/MODULES.md) |
 | `beepboop module list \| enable \| disable` | core | Inspect and toggle modules at runtime | [MODULES §13](docs/MODULES.md) |
 | `beepboop bench speaker\|stt\|tts\|wake\|aec\|endpoint\|llm\|e2e\|ram\|thermal\|all [--gates] [--json]` | core (+ audio) | Pipeline benchmark on the Pi; `--gates` is valid on `all` and exits non-zero if an M0 gate fails; results to `tools/bench/results/` | [OPERATIONS §11](docs/OPERATIONS.md#11-observability), [ROADMAP M0](docs/ROADMAP.md) |
+| `beepboop llm probe [--profile] [--region] [--pairs] [--cold-gap-minutes] [--gate] [--out]` | core (dev) | Measure Bedrock TTFT for M0 gate G3 (warm, cold-TLS, cold-cache turns; at most 20 billed calls) | [LLM_PROVIDERS](docs/LLM_PROVIDERS.md), [ROADMAP G3](docs/ROADMAP.md) |
 | `beepboop db migrate \| backup` | core | Schema migrations; `VACUUM INTO` snapshot encrypted to the recovery key | [DATA_AND_PRIVACY §5, §11](docs/DATA_AND_PRIVACY.md) |
 | `beepboop keys rotate-dek` | core | Re-wrap the data key under a new KEK version | [DATA_AND_PRIVACY §6.3](docs/DATA_AND_PRIVACY.md) |
 | `beepboop ca fingerprint` | core | Print the Tier-0 local CA root fingerprint for the `/ca` helper | [WEB_UI §7](docs/WEB_UI.md) |
@@ -209,6 +211,17 @@ M0 is "prove the Pi". Its gates (G1–G7) and verification items (V1–V5) are i
 | 10 Bench runs | `tools/bench/results/` | G1–G6 | **Owner with Pi** | 4 GB and 8 GB runs committed; numbers cited with dates in [VOICE_PIPELINE](docs/VOICE_PIPELINE.md) and [ROADMAP](docs/ROADMAP.md) |
 | 11 Hardware probes | `tools/bench/results/`, [HOME_ASSISTANT](docs/HOME_ASSISTANT.md), [DATA_AND_PRIVACY](docs/DATA_AND_PRIVACY.md) | V3, V4, V5 | **Owner with Pi** | AEC reference confirmed or barge-in deferred; 24 h ALSA soak clean; OTP KEK stable across reboots |
 | 12 Thermal | `tools/bench/results/` | G7 | **Owner with Pi** | 20 min `bench e2e` with no `0x4` bit in the reference fan case |
+
+**Status (2026-11-03)**: details, code paths and result citations in [ROADMAP M0](docs/ROADMAP.md#m0-prove-the-pi); owner steps in order in [tools/M0_OWNER_CHECKLIST.md](tools/M0_OWNER_CHECKLIST.md).
+
+| Step | Status |
+|---|---|
+| 1, 2, 5, 6 | done |
+| 3, 8 | code-done, pending owner (V1, V2) |
+| 4 | code-done, pending owner (training run, then G5) |
+| 7 | code-done, conformance passes; G3 pending owner (only a preliminary x86 workstation probe exists, not a gate result) |
+| 9, 10 | blocked on owner (corpus, then gate runs on 4 GB and 8 GB) |
+| 11, 12 | code-done, pending owner (V3, V4, V5, G7) |
 
 If a gate fails, open an ADR proposing the fallback (cloud STT default or 8 GB minimum) before any v0.1 work. When M0 passes, v0.1 begins with the agent loop and the `ha` module; see [docs/ROADMAP.md](docs/ROADMAP.md).
 

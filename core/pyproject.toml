@@ -1,0 +1,36 @@
+[project]
+name = "beepboop"
+version = "0.0.0"
+description = "beepboop core service: agent loop, policy, tool registry, HA client, LLM providers, API"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+authors = [{ name = "beepboop contributors" }]
+# Pre-declared for the M0 builders (Bedrock probe, HA onboarding, envelope
+# encryption, CLI). Exact versions live in the root uv.lock (hard rule 8).
+dependencies = [
+    "pydantic>=2.11,<3",
+    "structlog>=25.0",
+    "boto3>=1.40",
+    "botocore>=1.40",
+    "aiohttp>=3.12",       # HA WebSocket + REST client
+    "cryptography>=45.0",  # HKDF-SHA256 for the OTP-derived KEK (DATA_AND_PRIVACY §6.3)
+    "argon2-cffi>=25.1",   # passphrase / PIN hashing
+    "pynacl>=1.5",         # XChaCha20-Poly1305 AEAD for the secrets envelope (DATA_AND_PRIVACY §6.3)
+    "typer>=0.16",         # the `beepboop` CLI (CLAUDE.md §9)
+    "pyyaml>=6.0.2",
+]
+
+[project.scripts]
+beepboop = "beepboop.cli:main"
+
+# Entry-point groups used by core (CLAUDE.md §7). Providers register here.
+[project.entry-points."beepboop.llm_providers"]
+bedrock = "beepboop.providers.llm.bedrock.provider:BedrockProvider"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["beepboop"]

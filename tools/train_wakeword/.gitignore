@@ -1,0 +1,6 @@
+# Everything a pipeline run produces lives under data/ (downloads, clips, features,
+# checkpoints, exported models, eval reports). Nothing in it is committed: the model
+# is published as a release asset and listed in models/manifest.yaml.
+data/
+# The training env is separate from the workspace venv at the repo root.
+.venv/

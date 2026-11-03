@@ -1,0 +1,84 @@
+# beepboop model manifest (OPERATIONS §13): the single source of truth for every
+# downloaded artifact. Weights are downloaded, never vendored; only this file and the
+# generated LICENSES.md are tracked (see .gitignore).
+#
+#   python -m beepboop_bench.models fetch            download + sha256-verify + install
+#   python -m beepboop_bench.models verify           re-hash the cache
+#   python -m beepboop_bench.models licenses         regenerate LICENSES.md
+#
+# Schema: tools/bench/beepboop_bench/models.py (ModelEntry). `dest` is relative to this
+# folder (mounted at /models in the containers). `files` names the files the code opens
+# inside an extracted archive. sha256 values were recorded from the downloads on
+# 2026-11-02 against the sherpa-onnx release assets.
+schema_version: 1
+models:
+  - id: wespeaker-en-voxceleb-campp
+    kind: speaker
+    url: https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_CAM++.onnx
+    sha256: c46fad10b5f81e1aa4a60c162714208577093655076c5450f8c469e522ec54ef
+    size: 29292684
+    dest: speaker/wespeaker_en_voxceleb_CAM++.onnx
+    license: CC-BY-4.0
+    attribution: "WeSpeaker (wenet-e2e) CAM++ trained on VoxCeleb; ONNX export published by the sherpa-onnx project (Apache-2.0 code)"
+    source: https://github.com/wenet-e2e/wespeaker
+    notes: "fp32, 16 kHz, the VOICE_PIPELINE §8.1 model. sherpa-onnx reports its embedding dim as 512 (measured 2026-11-02 on this file; the 3D-Speaker English CAM++ export is 512-d too), not the 192 the docs state: a spec issue for VOICE_PIPELINE §8.1 and the hello.speaker.dim contract. The int8 G1 fallback is not published by sherpa-onnx; add an entry if one is exported. (The release tag really is spelled 'recongition'.)"
+
+  - id: sherpa-onnx-streaming-zipformer-en-20m-2023-02-17
+    kind: stt
+    url: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17.tar.bz2
+    sha256: 9c559283e8498d3fe95913c79ca1cb454bb26281ac2b102b41306c7d752765d9
+    size: 127887156
+    archive: tar.bz2
+    dest: stt/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17
+    files:
+      tokens: tokens.txt
+      encoder_int8: encoder-epoch-99-avg-1.int8.onnx
+      decoder_int8: decoder-epoch-99-avg-1.int8.onnx
+      joiner_int8: joiner-epoch-99-avg-1.int8.onnx
+      encoder_fp32: encoder-epoch-99-avg-1.onnx
+      decoder_fp32: decoder-epoch-99-avg-1.onnx
+      joiner_fp32: joiner-epoch-99-avg-1.onnx
+    license: Apache-2.0
+    attribution: "icefall / k2-fsa streaming zipformer transducer, English, ~20 M params, trained on LibriSpeech; exported by the sherpa-onnx project"
+    source: https://github.com/k2-fsa/sherpa-onnx
+    notes: "The small streaming English model of VOICE_PIPELINE §10.1; int8 encoder/decoder/joiner are the default, fp32 ships in the same archive. The archive also carries test_wavs/ (LibriSpeech, CC-BY-4.0)."
+
+  - id: silero-vad
+    kind: vad
+    url: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+    sha256: 9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6
+    size: 643854
+    dest: vad/silero_vad.onnx
+    license: MIT
+    attribution: "Silero VAD (Silero Team), ONNX as redistributed by sherpa-onnx"
+    source: https://github.com/snakers4/silero-vad
+    notes: "Silero VAD v4 ONNX, 16 kHz, 512-sample (32 ms) windows (VOICE_PIPELINE §7.1)."
+
+  - id: vits-piper-en_US-lessac-low
+    kind: tts
+    url: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-low.tar.bz2
+    sha256: 8fb427b8637334072ee5723d72fa418c45bfdd4b7deebeacdf2938662618c1cb
+    size: 67097098
+    archive: tar.bz2
+    dest: tts/vits-piper-en_US-lessac-low
+    files:
+      model: en_US-lessac-low.onnx
+      tokens: tokens.txt
+      espeak_ng_data: espeak-ng-data
+      model_card: MODEL_CARD
+    license: LicenseRef-Blizzard-2013-Lessac
+    attribution: "Piper voice en_US-lessac-low (rhasspy/piper, MIT code) trained on the Lessac Blizzard 2013 corpus; packaged for sherpa-onnx with espeak-ng-data (GPL-3.0 data files read, not linked)"
+    source: https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/lessac/low
+    notes: "OWNER REVIEW NEEDED before a release: the voice's dataset licence is the Blizzard 2013 Lessac licence (https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/license.html), not an SPDX identifier. The docs picked this voice as the M0 default (VOICE_PIPELINE §11.1); swapping voices is a manifest edit."
+
+  - id: hey_beepboop
+    kind: wake
+    status: pending
+    dest: wake/hey_beepboop_v1
+    files:
+      config: hey_beepboop.json
+      model: hey_beepboop.tflite
+    license: Apache-2.0
+    attribution: "Stock \"Hey beepboop\" microWakeWord model trained by tools/train_wakeword/ (training-data licences in tools/train_wakeword/DATA_LICENSES.md)"
+    source: tools/train_wakeword
+    notes: "No url or sha256 yet: the first stock model is produced by tools/train_wakeword (M0 step 4) and pinned here when published. Until then bench wake reports with the pymicro-wakeword builtin 'okay_nabu' model, flagged stock_model=false (never a G5 result)."

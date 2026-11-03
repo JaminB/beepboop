@@ -1,0 +1,27 @@
+# audio: the `beepboop-audio` package
+
+The audio service (container `beepboop-audio`, `network_mode: none`): ALSA I/O, wake
+word, VAD, speaker ID, STT, TTS and earcons. It speaks to core only through the text
+event socket ([ARCHITECTURE §4](../docs/ARCHITECTURE.md#4-audio--core-event-protocol));
+no audio ever leaves this package ([CLAUDE.md hard rule 4](../CLAUDE.md#4-hard-rules)).
+Provider Protocols: [VOICE_PIPELINE §17](../docs/VOICE_PIPELINE.md#17-provider-interfaces).
+
+**State (M0):** `beepboop_audio/cli.py` (an argparse CLI so the audio image stays free
+of Typer/Click), the event protocol in [`beepboop_audio/events/`](beepboop_audio/events/README.md)
+(M0 step 2: pydantic models, JSON-lines framing, unix-socket server/client, in-process
+fake) and `tests/`. No speech pipeline yet; the stage benchmarks live in `tools/bench/`. The pinned speech runtimes
+(`sherpa-onnx` 2.0.1, `pymicro-wakeword` 2.5.0) are declared in `pyproject.toml` and
+install on Windows x86_64, Linux x86_64 and Linux aarch64 from wheels.
+
+## Run
+
+```bash
+uv sync --all-packages
+uv run beepboop-audio version
+uv run pytest audio
+```
+
+## Pending on hardware
+
+Everything that touches the XVF3800 or ALSA (V3 AEC reference, V4 24 h ALSA soak) is
+an owner action on the Pi; see [ROADMAP M0](../docs/ROADMAP.md#m0-prove-the-pi).
