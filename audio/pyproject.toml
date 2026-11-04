@@ -4,18 +4,20 @@ version = "0.0.0"
 description = "beepboop audio service: wake word, VAD, speaker ID, STT, TTS behind the event socket"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-license = "MIT"
+license = "GPL-3.0-or-later"
 authors = [{ name = "beepboop contributors" }]
 # sherpa-onnx and pymicro-wakeword are pinned exactly (CLAUDE.md hard rule 8,
 # VOICE_PIPELINE §1, ADR 0009). Both publish cp312 wheels for win_amd64,
 # manylinux x86_64 and manylinux aarch64, so no platform markers are needed.
 dependencies = [
+    "beepboop-protocol",  # event protocol + redacting log setup (ADR 0019)
     "pydantic>=2.11,<3",
     "structlog>=25.0",
     "numpy>=2.1",
     "sherpa-onnx==2.0.1",
     "pymicro-wakeword==2.5.0",
     "soundfile>=0.13",
+    "piper-phonemize==1.5.9",
 ]
 
 [project.scripts]
@@ -23,6 +25,16 @@ beepboop-audio = "beepboop_audio.cli:main"
 
 # Provider entry-point groups (VOICE_PIPELINE §17): beepboop.wake_providers,
 # beepboop.speaker_providers, beepboop.stt_providers, beepboop.tts_providers.
+
+[tool.uv.sources]
+beepboop-protocol = { workspace = true }
+piper-phonemize = { index = "k2-fsa-piper-phonemize" }
+
+[[tool.uv.index]]
+name = "k2-fsa-piper-phonemize"
+url = "https://k2-fsa.github.io/icefall/piper_phonemize.html"
+format = "flat"
+explicit = true
 
 [build-system]
 requires = ["hatchling>=1.27"]

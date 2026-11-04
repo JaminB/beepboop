@@ -19,7 +19,7 @@ Related: [ARCHITECTURE](ARCHITECTURE.md) · [IDENTITY_AND_TRUST](IDENTITY_AND_TR
 | Per-person permissions | **No.** HA is admin vs non-admin; non-admins see and control everything | The whole trust model: [IDENTITY_AND_TRUST](IDENTITY_AND_TRUST.md) |
 | A voice-first LLM tool surface | Assist and an MCP server, both household-global | Our own registry; see §10 |
 
-**Rule: HA first.** A native beepboop module is allowed only when HA cannot model per-person accounts cleanly (CalDAV with app passwords in v0.1, Spotify and Google in v0.2). Both kinds expose the identical module contract ([MODULES](MODULES.md)). HA Core is Apache-2.0; talking to it over its API creates no derivative work, so beepboop stays MIT ([LICENSE](../LICENSE)).
+**Rule: HA first.** A native beepboop module is allowed only when HA cannot model per-person accounts cleanly (CalDAV with app passwords in v0.1, Spotify and Google in v0.2). Both kinds expose the identical module contract ([MODULES](MODULES.md)). HA Core is Apache-2.0; talking to it over its API creates no derivative work, so HA's licence does not constrain beepboop's own GPL-3.0-or-later ([LICENSE](../LICENSE)), and vice versa.
 
 **Deployment choice.** HA Container, not HAOS: HAOS owns the whole OS and beepboop must own the Pi. We lose the Supervisor's one-click add-ons; run add-on containers (MQTT broker, Z-Wave JS, Matter server) as for any HA install, bound to loopback. The only optional beepboop compose profile in v0.1 is `music` (§12).
 
@@ -27,36 +27,19 @@ Related: [ARCHITECTURE](ARCHITECTURE.md) · [IDENTITY_AND_TRUST](IDENTITY_AND_TR
 
 ## 2. Container setup
 
-Everything lives in `deploy/compose.yaml` ([OPERATIONS §3](OPERATIONS.md#3-compose-layout) is the canonical file); image digests are pinned in `deploy/.env` (see OPERATIONS §3).
+The `homeassistant` service (image by digest, host networking, `/srv/beepboop/ha:/config` on the SSD, memory cap, `cpu_shares`, healthcheck) is defined once, in [OPERATIONS §3](OPERATIONS.md#3-compose-layout); [`deploy/compose.yaml`](../deploy/compose.yaml) is the literal file. This doc does not repeat it. The HA-specific points:
 
-```yaml
-services:
-  homeassistant:
-    # Tag is documentation; the digest is what runs. Start at the latest vetted 2026.10.x.
-    image: ghcr.io/home-assistant/home-assistant:2026.10.3@sha256:<digest>
-    network_mode: host            # discovery (mDNS, SSDP, Matter, Zeroconf) needs the host stack
-    restart: unless-stopped
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - /srv/beepboop/ha:/config  # on the USB3 SSD, never the SD card
-      - /run/dbus:/run/dbus:ro    # Bluetooth only; drop if unused
-    mem_limit: 1g                 # OOM killer takes HA before beepboop-audio (budget: OPERATIONS §7)
-    cpu_shares: 512               # audio service has 1024; HA yields under contention
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/api/ 2>&1 | grep -q 401"]  # 401 = up, auth required
-      interval: 30s
-      timeout: 5s
-      retries: 5
-```
+- **Host networking** is for discovery (mDNS, SSDP, Matter, Zeroconf). It is also why the loopback bind in §2.1 matters: with host networking, a port HA opens is a port on the Pi.
+- **Time zone** comes from the read-only `/etc/localtime` mount, not a `TZ` variable.
+- **The memory cap and `cpu_shares: 512`** make HA the first thing the OOM killer and the scheduler squeeze, before `beepboop-audio` (§2.2, [OPERATIONS §7](OPERATIONS.md#7-resource-budget)).
 
 `beepboop-core` reaches HA at `http://127.0.0.1:8123` and `ws://127.0.0.1:8123/api/websocket` because core also uses host networking ([ARCHITECTURE §2](ARCHITECTURE.md#2-containers)). No other container, and nothing on the LAN, gets :8123.
 
 ### 2.1 Loopback bind plus nftables
 
-Two layers, because `http.server_host` behaviour has varied across HA releases and **M0 must verify it** on the pinned image.
+Two layers, because `http.server_host` behaviour has varied across HA releases and **M0 must verify it** on the pinned image (V1).
 
-`/srv/beepboop/ha/configuration.yaml` (written by beepboop at onboarding, marked `# managed by beepboop` so upgrades and admins know not to hand-edit this block):
+**Layer 1: HA binds loopback.** `/srv/beepboop/ha/configuration.yaml` carries a block marked `# managed by beepboop` so upgrades and admins know not to hand-edit it. The template is [`deploy/homeassistant/configuration.yaml`](../deploy/homeassistant/configuration.yaml); its content is owned here:
 
 ```yaml
 default_config:
@@ -67,7 +50,7 @@ http:
   trusted_proxies: [127.0.0.1]    # Caddy (OAuth callback, admin route) sits on loopback
 
 homeassistant:
-  internal_url: https://beepboop.local   # beepboop's canonical URL; see §11
+  internal_url: https://beepboop.local   # rendered from BB_HOST: https://$BB_HOST (see below)
   external_url: https://beepboop.local
 
 recorder:
@@ -82,19 +65,13 @@ logger:
   default: warning
 ```
 
-`deploy/nftables/beepboop.nft`, installed on the host by `deploy/install.sh` (containers cannot do this):
+**The canonical URLs are set here and only here** (hard rule 10). `install.sh` renders the block from the template, replacing `https://beepboop.local` with `https://$BB_HOST` from `deploy/.env` ([OPERATIONS §5](OPERATIONS.md#5-install-script-and-the-host-cli), step 3), and re-renders it when the host or tier changes. Onboarding (§3) does not set them over the WebSocket: with the URLs in YAML, HA treats them as YAML-owned anyway.
 
-```
-table inet beepboop {
-  chain input {
-    type filter hook input priority 0; policy accept;
-    iifname "lo" accept
-    tcp dport 8123 drop  comment "Home Assistant is loopback-only; use beepboop"
-  }
-}
-```
+**Layer 2: the host firewall.** The nftables ruleset is owned by [OPERATIONS §2 step 8](OPERATIONS.md#2-os-preparation) and implemented in [`deploy/nftables/beepboop.nft`](../deploy/nftables/beepboop.nft): inbound default-deny. The HA-specific part is one rule: `tcp dport 8123 drop` comes **before** the established-state and allowlist rules, right after loopback, so no allowlist entry or established flow can re-open :8123 from the LAN.
 
-`beepboop doctor` checks both layers: it tries to connect to `<lan-ip>:8123` from the host and expects a timeout.
+**Discovery replies are blocked by default.** Host networking lets HA *send* discovery traffic, but the default-deny input chain drops the unicast replies to SSDP/UPnP searches and inbound HomeKit (HAP) connections, so integrations that rely on them (some UPnP/DLNA devices, HomeKit Controller pairing, HomeKit Bridge) will not find or reach devices. mDNS (`5353/udp`) is allowed. A household that needs one of these declares the port under `user:` in `deploy/ports.yaml` with a reason ([OPERATIONS §2 step 8](OPERATIONS.md#2-os-preparation)). This is an M0 watch item: V1 records which integrations in the test household break.
+
+**How it is checked.** `beepboop doctor` checks each layer on the Pi itself: the bind (`ss -ltn` shows `127.0.0.1:8123` and no wildcard or LAN address on :8123) and the ruleset (`nft list table inet beepboop` is loaded and contains the `8123` drop before the allowlist). It deliberately does **not** connect to `<lan-ip>:8123` from the Pi: a connection from the host to its own LAN address goes through `lo`, which is accepted, so a self-connect can never observe the drop. End-to-end verification needs a second machine on the LAN; that is V1 ([tools/probes/ha_bind/](../tools/probes/ha_bind/README.md)).
 
 ### 2.2 Resource tuning for a Pi 4
 
@@ -124,12 +101,16 @@ sequenceDiagram
   C->>H: WS auth {access_token}
   C->>H: WS auth/long_lived_access_token {client_name:"beepboop-core", lifespan:3650}
   H-->>C: <long-lived token>
-  C->>H: WS config/core/update {internal_url, external_url}
-  Note over C: store owner password + LLAT in secrets(owner_module="core"); discard access/refresh tokens
+  Note over C: store LLAT in secrets(owner_module="core") (the owner password was stored before the users step)
+  C->>H: POST /auth/token action=revoke&token=<onboarding refresh token>
+  C->>H: GET /api/onboarding  (every step must report done)
 ```
 
 Rules:
-- `client_id` is beepboop's canonical URL (`https://beepboop.local` at Tier 0). HA requires it to be a URL.
+- **The sequence is the four HA steps in HA's order** (`user`, `core_config`, `analytics`, `integration`), as read from HA 2026.10.3's source and replayed by the fake in `core/tests/ha/`. V2 records the live result against the pinned image ([verify_v2.md](../tools/probes/ha_onboarding/verify_v2.md)).
+- `client_id` is beepboop's canonical URL (`https://beepboop.local/` at Tier 0; HA canonicalises it with a trailing `/`). HA requires it to be a URL. The `integration` step's `redirect_uri` must have the **same scheme and host** as `client_id` (HA's IndieAuth check); beepboop sends `<client_id>?auth_callback=1`.
+- **The onboarding refresh token is revoked, not just forgotten.** HA keeps a refresh token server-side until it is revoked, so once the long-lived token is stored, core posts `action=revoke` with the onboarding refresh token to `/auth/token`; the onboarding access token dies with it. Revocation is best-effort (HA answers 200 either way); a failure is logged, never retried in a loop.
+- Canonical URLs are **not** set during onboarding; they live only in the managed YAML block (§2.1).
 - The long-lived token is created on a session authenticated by the onboarding login (refresh-token session). The research note that LLAT creation may not work on a connection authenticated *with* an LLAT is why we do it here, once, and never need to again. **M0 verifies** this and the 10-year lifespan.
 - Both secrets are envelope-encrypted rows in `secrets` ([DATA_AND_PRIVACY](DATA_AND_PRIVACY.md)). Only the policy wrapper (§8) decrypts the token; it never appears in logs, `ToolContext`, the UI or any API response.
 - If HA is already onboarded (restore from backup, or an existing `/config` volume), beepboop detects `done: true` on the `user` step and asks the admin, in the web UI, for an owner login once to mint its token. Health shows `ha: needs login` until then.
@@ -365,7 +346,7 @@ Service existence and argument shapes are validated against `get_services` at ca
 - **Assist / `conversation.process`** acts immediately on a global exposure list, so its intent matcher cannot be used as a pre-check without a parallel ACL pass on its returned targets. We get the same latency win from our own deterministic fast path, which runs *through* the resolver and policy ([LLM_PROVIDERS §12](LLM_PROVIDERS.md#12-the-deterministic-fast-path)). Assist's multilingual sentence corpus is a good reference for our grammar files.
 - **HA's `mcp` client integration** (HA consuming MCP servers) is irrelevant: beepboop is the agent.
 
-**v0.3+ candidate: `beepboop_bridge`**, an HA custom component registering an `llm.API` backed by beepboop's registry and policy, so HA's own Assist satellites respect beepboop profiles. Separate MIT repo, because it tracks HA's internal API ([ROADMAP](ROADMAP.md)).
+**v0.3+ candidate: `beepboop_bridge`**, an HA custom component registering an `llm.API` backed by beepboop's registry and policy, so HA's own Assist satellites respect beepboop profiles. Separate repo, because it tracks HA's internal API ([ROADMAP](ROADMAP.md)); its licence is an open choice for v0.3 (code that loads into HA's process and would go upstream may need to be Apache-2.0 rather than GPL).
 
 ---
 
@@ -399,17 +380,7 @@ In v0.1 only the Music Assistant flow runs through this (no OAuth). The generic 
 
 ## 12. Music Assistant path (music module, v0.1)
 
-Music Assistant (MA) runs as the optional compose profile `music` and is integrated into HA with the core `music_assistant` integration. beepboop's `music` module is `kind: ha`: it has no transport of its own and uses `ctx.ha`.
-
-```yaml
-# deploy/compose.yaml (profile: music)
-  music-assistant:
-    image: ghcr.io/music-assistant/server:<tag>@sha256:<digest>
-    network_mode: host           # player discovery (AirPlay, Chromecast, Sonos, Snapcast)
-    volumes: ["/srv/beepboop/music:/data"]
-    mem_limit: 512m
-    profiles: [music]
-```
+Music Assistant (MA) runs as the optional compose profile `music` (service `music`, defined in [OPERATIONS §3](OPERATIONS.md#3-compose-layout); host networking for player discovery: AirPlay, Chromecast, Sonos, Snapcast) and is integrated into HA with the core `music_assistant` integration. beepboop's `music` module is `kind: ha`: it has no transport of its own and uses `ctx.ha`.
 
 Setup, driven by **Integrations › Music › Set up** in the web UI: (1) the installer enables the `music` profile; (2) core runs `config_entries/flow {handler:"music_assistant", url:"http://127.0.0.1:8095"}` over the WebSocket; (3) MA players appear as `media_player.*` entities tagged with that config entry; the admin grants them by area like any device (they are shared playback hardware). Streaming provider accounts (Spotify, Tidal, local library) are configured inside MA's UI, reached through the same gated admin route as HA (§14, port 8445 → 8095). The music module's `ma_provider` setting is `x-per-profile` ([MODULES §6.3](MODULES.md#63-per-profile-overrides)): each person picks which MA provider instance is theirs, so "play my liked songs" uses Alex's account when Alex is speaking. It is a setting, not an `integrations` row. Services used: `music_assistant.play_media` (`media_id`, `media_type`, `enqueue`), `music_assistant.search` (`return_response`), `media_player.*` for transport. Details, prompts and quirks are in `modules/music/AGENT.md`.
 
@@ -472,8 +443,8 @@ Reaching HA's UI is one tap: **Open Home Assistant** on Integrations › Home As
 
 ## 16. M0 checklist (HA part)
 
-- [ ] Pinned image boots on Pi OS Lite 64-bit with the compose snippet in §2; RSS and CPU recorded with the recorder settings applied.
-- [ ] `server_host: 127.0.0.1` verified from a second LAN host; nftables rule verified by disabling layer 1.
+- [ ] Pinned image boots on Pi OS Lite 64-bit with the `homeassistant` service from [OPERATIONS §3](OPERATIONS.md#3-compose-layout); RSS and CPU recorded with the recorder settings applied.
+- [ ] `server_host: 127.0.0.1` verified from a second LAN host; nftables rule verified by disabling layer 1 (V1). Record which discovery-based integrations the default-deny chain breaks (§2.1).
 - [ ] Headless onboarding (§3) runs end to end on a fresh volume; LLAT minted; `GET /api/onboarding` reports all steps done.
 - [ ] WebSocket startup (§4) under 2 s on a 200-entity demo household; `call_service` round trip p50/p90 measured over loopback (target: 40 ms p50).
 - [ ] Resolver fixture suite passes; `beepboop bench` includes "resolve + authorize" (target: 20 ms).

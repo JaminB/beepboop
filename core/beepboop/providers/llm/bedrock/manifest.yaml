@@ -14,3 +14,10 @@ settings:
     guardrail_id:    { type: string }
     guardrail_version: { type: string }
 secrets: [aws_access_key_id, aws_secret_access_key, bedrock_bearer_token]
+# Secrets by `credentials` mode: access_keys -> aws_access_key_id + aws_secret_access_key;
+# bearer_token -> bedrock_bearer_token (Bedrock API key); ambient -> none.
+#
+# Capability limits are not settings; they live in BedrockProvider.caps (provider.py):
+#   max_ctx: 200000, max_output: 32000. Source: conservative values chosen in M0,
+#   below what the 5.5 models accept (Bedrock model cards), so one cap fits the whole
+#   ladder including the Haiku 4.5 fallback. Voice turns use max_tokens 400 (§9).

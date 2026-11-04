@@ -1,4 +1,8 @@
-"""BB_AUDIO_SOCKET parsing, JSON Schema determinism, and the light-import guarantee."""
+"""BB_AUDIO_SOCKET parsing, JSON Schema determinism, and the light-import guarantee.
+
+The light-import test is the hard-rule-4 guard for this package: nothing
+audio-capable may load when either service imports the protocol.
+"""
 
 from __future__ import annotations
 
@@ -9,8 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from beepboop_audio.events import (
+from beepboop_protocol import (
     DEFAULT_ADDRESS,
+    PROTOCOL_MAJOR,
     TcpAddress,
     UnixAddress,
     address_from_env,
@@ -57,7 +62,7 @@ def test_address_str_roundtrips() -> None:
 def test_schema_is_deterministic_and_complete() -> None:
     assert schema_json() == schema_json()
     schema = protocol_schema()
-    assert schema["protocol"] == 1
+    assert schema["protocol"] == PROTOCOL_MAJOR == 2
     text = json.dumps(schema)
     for name in ("WakeEvent", "SttFinalEvent", "CapturePinEvent", "ProfilesSyncEvent"):
         assert name in text
@@ -66,12 +71,18 @@ def test_schema_is_deterministic_and_complete() -> None:
     assert "stt.final" in mapping
 
 
-def test_events_import_without_heavy_audio_dependencies() -> None:
-    """Core imports the protocol; it must not drag in numpy or speech runtimes."""
+def test_protocol_imports_nothing_audio_capable() -> None:
+    """Both services import the protocol (ADR 0019, hard rule 4).
+
+    It must not load numpy, a speech runtime, an audio I/O library or either
+    service package.
+    """
     code = (
-        "import sys, beepboop_audio.events\n"
-        "heavy = {'numpy', 'sherpa_onnx', 'pymicro_wakeword', 'soundfile'} & set(sys.modules)\n"
-        "print(sorted(heavy))\n"
+        "import sys, beepboop_protocol, beepboop_protocol.log, beepboop_protocol.examples\n"
+        "banned = {'numpy', 'sherpa_onnx', 'pymicro_wakeword', 'soundfile', 'sounddevice',\n"
+        "          'pyaudio', 'alsaaudio', 'piper_phonemize', 'onnxruntime',\n"
+        "          'beepboop', 'beepboop_audio', 'beepboop_bench'}\n"
+        "print(sorted(banned & {m.split('.')[0] for m in sys.modules}))\n"
     )
     out = subprocess.run(  # noqa: S603 - fixed interpreter and code
         [sys.executable, "-c", code], capture_output=True, text=True, check=True

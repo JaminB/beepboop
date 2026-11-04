@@ -12,7 +12,7 @@ files implement them. If you change one, change the doc in the same PR (hard rul
 | [`caddy/Caddyfile`](caddy/Caddyfile) | `/srv/beepboop/deploy/caddy/Caddyfile` | Tier 0 local CA; `:443` → core, except HA's `/auth/external/callback*`; `:80` `/ca` helper + redirect; `:8443`/`:8445` HA and Music Assistant UIs behind `forward_auth /api/auth/check?require=admin`. |
 | [`ports.yaml`](ports.yaml) | `/srv/beepboop/deploy/ports.yaml` | Every listening port with a reason: the LAN allowlist (`base`, per-profile, user-declared) and the loopback-only sockets. `beepboop doctor` reads it. |
 | [`nftables/beepboop.nft`](nftables/beepboop.nft) | included from `/etc/nftables.conf` | Inbound default-deny; drops LAN → `:8123` first; allows exactly `ports.yaml` `base` plus the `lan_tcp`/`lan_udp` sets. Never flushes Docker's tables. |
-| [`homeassistant/configuration.yaml`](homeassistant/configuration.yaml) | `/srv/beepboop/ha/configuration.yaml` | The managed block from [HOME_ASSISTANT §2.1](../docs/HOME_ASSISTANT.md#21-loopback-bind-plus-nftables): `server_host: 127.0.0.1`, trusted proxy, canonical URLs, recorder tuning. |
+| [`homeassistant/configuration.yaml`](homeassistant/configuration.yaml) | `/srv/beepboop/ha/configuration.yaml` | The managed block from [HOME_ASSISTANT §2.1](../docs/HOME_ASSISTANT.md#21-loopback-bind-plus-nftables): `server_host: 127.0.0.1`, trusted proxy, canonical URLs, recorder tuning. `install.sh` renders it with `https://$BB_HOST` in place of `https://beepboop.local`; this is the only place HA's URLs are set. |
 
 `install.sh`, the systemd units, the udev rule and `firmware.lock` are not written yet
 ([CLAUDE.md §3](../CLAUDE.md#3-repository-layout)); until then the steps below are manual.

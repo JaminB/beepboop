@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import asyncio
 
-from beepboop_audio.events.audio_events import AudioHelloEvent
-from beepboop_audio.events.connection import (
+from beepboop_protocol.audio_events import AudioHelloEvent
+from beepboop_protocol.connection import (
     AudioSide,
     ConnectionClosedError,
     CoreSide,
@@ -26,7 +26,7 @@ from beepboop_audio.events.connection import (
     core_channel,
     core_handshake,
 )
-from beepboop_audio.events.core_events import CoreHelloEvent
+from beepboop_protocol.core_events import CoreHelloEvent
 
 _EOF = b""
 

@@ -30,16 +30,16 @@ from typing import Self
 
 import structlog
 
-from beepboop_audio.events.address import SocketAddress, TcpAddress, UnixAddress
-from beepboop_audio.events.audio_events import AudioHelloEvent
-from beepboop_audio.events.codec import ProtocolError
-from beepboop_audio.events.connection import (
+from beepboop_protocol.address import SocketAddress, TcpAddress, UnixAddress
+from beepboop_protocol.audio_events import AudioHelloEvent
+from beepboop_protocol.codec import ProtocolError
+from beepboop_protocol.connection import (
     AudioSide,
     StreamDuplex,
     audio_channel,
     audio_handshake,
 )
-from beepboop_audio.events.core_events import CoreHelloEvent
+from beepboop_protocol.core_events import CoreHelloEvent
 
 log = structlog.get_logger(__name__)
 
@@ -51,7 +51,7 @@ DEFAULT_SOCKET_MODE = 0o660
 
 _NO_UNIX = (
     "unix sockets are not available on this platform; for development set "
-    "BB_AUDIO_SOCKET=tcp://127.0.0.1:<port> (see audio/beepboop_audio/events/README.md)"
+    "BB_AUDIO_SOCKET=tcp://127.0.0.1:<port> (see protocol/README.md)"
 )
 
 

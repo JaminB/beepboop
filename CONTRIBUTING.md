@@ -39,7 +39,7 @@ git clone https://github.com/JaminB/beepboop.git
 cd beepboop
 uv sync                              # core, audio, tools from uv.lock
 pnpm --dir ui install
-uv run pre-commit install            # ruff, pyright, manifest lint on commit
+uv run pre-commit install            # ruff and pyright on commit; the manifest-lint hook arrives with modules (v0.1)
 uv run beepboop db migrate           # creates ./dev.sqlite
 uv run beepboop chat --as admin      # text chat through the real policy path
 ```
@@ -102,7 +102,7 @@ Before you start, check two things:
 
 **Module PR checklist** = `beepboop module check modules/<id>` passes (lint L1–L15, which includes ≥ 3 eval cases per tool and ≥ 1 denial) + an HA-first justification in the PR + the privacy section of `SETUP.md` + a catalog row in [docs/MODULES.md §16](docs/MODULES.md). Any bundled data or model licence goes in `modules/<id>/LICENSES.md`.
 
-Modules in this repository are MIT like everything else. Third-party modules arrive as Python entry points in v0.3; until then, copy the module into `modules/`.
+Modules in this repository are GPL-3.0-or-later like everything else; a module that needs a different licence must use one compatible with GPL-3.0 and explain it in `modules/<id>/LICENSES.md` ([MODULES §3](docs/MODULES.md)). Third-party modules arrive as Python entry points in v0.3; until then, copy the module into `modules/`.
 
 ## 6. Architecture decision records
 
@@ -119,7 +119,7 @@ The template, numbering, statuses and process live in one place: [docs/adr/READM
 
 ## 8. Licence and attribution
 
-By contributing you agree that your contribution is licensed under the MIT licence in [LICENSE](LICENSE). Do not contribute code or models you do not have the right to license under MIT; speech models with other licences are downloaded at install time and listed in `models/LICENSES.md`, never vendored.
+By contributing you agree that your contribution is licensed under the GNU General Public License, version 3 or (at your option) any later version (`GPL-3.0-or-later`, full text in [LICENSE](LICENSE)). Do not contribute code or models you do not have the right to license under GPL-3.0-or-later; speech models with other licences are downloaded at install time and listed in `models/LICENSES.md`, never vendored.
 
 If a commit was produced with an AI coding assistant, keep the attribution trailer the tooling adds. We care that the work is correct and reviewed, not who or what typed it.
 

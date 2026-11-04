@@ -11,7 +11,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from structlog.testing import capture_logs
 
-from beepboop_audio.events import (
+from beepboop_protocol import (
     EventValidationError,
     FrameError,
     LineFramer,
@@ -24,14 +24,16 @@ from beepboop_audio.events import (
     decode_core_event,
     encode,
 )
-from beepboop_audio.events.examples import (
+from beepboop_protocol.examples import (
     EXAMPLE_PIN_HASH,
+    EXAMPLE_PROFILE_ALEX,
+    EXAMPLE_PROFILE_SAM,
     EXAMPLE_TURN_ID,
     example_audio_events,
     example_core_events,
 )
 
-ARCHITECTURE_MD = Path(__file__).resolve().parents[3] / "docs" / "ARCHITECTURE.md"
+ARCHITECTURE_MD = Path(__file__).resolve().parents[2] / "docs" / "ARCHITECTURE.md"
 
 
 def test_encode_is_one_terminated_line() -> None:
@@ -60,7 +62,10 @@ def test_spec_example_decodes() -> None:
     lines = [ln for ln in block.strip().splitlines() if ln.strip()]
     assert len(lines) == 8
     for raw in lines:
+        # The doc abbreviates ULIDs: "01JBX…" is a turn_id, "alex"/"sam" are profile ids.
         arrow, payload = raw[0], raw[2:].replace("01JBX…", EXAMPLE_TURN_ID)
+        payload = payload.replace('"alex"', f'"{EXAMPLE_PROFILE_ALEX}"')
+        payload = payload.replace('"sam"', f'"{EXAMPLE_PROFILE_SAM}"')
         decode = decode_audio_event if arrow == "←" else decode_core_event
         event = decode(payload)
         assert event is not None, payload

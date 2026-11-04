@@ -62,7 +62,8 @@ MAX_CACHE_POINTS = 4
 
 # ---- tool names -------------------------------------------------------------
 # Converse tool names must match [a-zA-Z0-9_-]+ (botocore service model,
-# ToolName shape), so "home.turn_on" is sent as "home__turn_on" (§3.2, §14 Q3).
+# ToolName shape), so "home.turn_on" is sent as "home__turn_on" (§3.2). Every
+# door (openai_compat, /mcp) uses the same mapping.
 
 
 def mangle_tool_name(name: str) -> str:

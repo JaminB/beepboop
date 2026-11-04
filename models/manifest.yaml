@@ -21,7 +21,7 @@ models:
     license: CC-BY-4.0
     attribution: "WeSpeaker (wenet-e2e) CAM++ trained on VoxCeleb; ONNX export published by the sherpa-onnx project (Apache-2.0 code)"
     source: https://github.com/wenet-e2e/wespeaker
-    notes: "fp32, 16 kHz, the VOICE_PIPELINE §8.1 model. sherpa-onnx reports its embedding dim as 512 (measured 2026-11-02 on this file; the 3D-Speaker English CAM++ export is 512-d too), not the 192 the docs state: a spec issue for VOICE_PIPELINE §8.1 and the hello.speaker.dim contract. The int8 G1 fallback is not published by sherpa-onnx; add an entry if one is exported. (The release tag really is spelled 'recongition'.)"
+    notes: "fp32, 16 kHz, the VOICE_PIPELINE §8.1 model. sherpa-onnx reports its embedding dim as 512 (measured 2026-11-02 on this file; the 3D-Speaker English CAM++ export is 512-d too). The protocol carries it as hello.speaker.dim (ADR 0019). The int8 G1 fallback is not published by sherpa-onnx; add an entry if one is exported. (The release tag really is spelled 'recongition'.)"
 
   - id: sherpa-onnx-streaming-zipformer-en-20m-2023-02-17
     kind: stt
@@ -67,9 +67,9 @@ models:
       espeak_ng_data: espeak-ng-data
       model_card: MODEL_CARD
     license: LicenseRef-Blizzard-2013-Lessac
-    attribution: "Piper voice en_US-lessac-low (rhasspy/piper, MIT code) trained on the Lessac Blizzard 2013 corpus; packaged for sherpa-onnx with espeak-ng-data (GPL-3.0 data files read, not linked)"
+    attribution: "Piper voice en_US-lessac-low (rhasspy/piper, MIT code) trained on the Lessac Blizzard 2013 corpus; packaged for sherpa-onnx with espeak-ng-data (GPL-3.0), which the piper-phonemize/espeak-ng phonemiser in beepboop-audio reads"
     source: https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/lessac/low
-    notes: "OWNER REVIEW NEEDED before a release: the voice's dataset licence is the Blizzard 2013 Lessac licence (https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/license.html), not an SPDX identifier. The docs picked this voice as the M0 default (VOICE_PIPELINE §11.1); swapping voices is a manifest edit."
+    notes: "Research-only provenance, accepted by the owner 2026-11-03 (D1, ADR 0020) for this personal/research project: the voice's dataset licence is the Blizzard 2013 Lessac licence (https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/license.html), not an SPDX identifier, and does not grant commercial use. It is the default voice (VOICE_PIPELINE §11.1); a commercial or redistribution-strict build swaps to a voice with a clean dataset licence, which is a manifest edit."
 
   - id: hey_beepboop
     kind: wake

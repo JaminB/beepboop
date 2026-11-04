@@ -26,9 +26,9 @@ from typing import cast
 import structlog
 from pydantic import TypeAdapter, ValidationError
 
-from beepboop_audio.events.audio_events import AUDIO_EVENT_CLASSES, AudioEvent
-from beepboop_audio.events.core_events import CORE_EVENT_CLASSES, CoreEvent
-from beepboop_audio.events.envelope import EventBase
+from beepboop_protocol.audio_events import AUDIO_EVENT_CLASSES, AudioEvent
+from beepboop_protocol.core_events import CORE_EVENT_CLASSES, CoreEvent
+from beepboop_protocol.envelope import EventBase
 
 log = structlog.get_logger(__name__)
 

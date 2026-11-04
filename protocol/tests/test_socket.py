@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from beepboop_audio.events import (
+from beepboop_protocol import (
     AudioEventServer,
     AudioHelloEvent,
     AudioSide,
@@ -29,9 +29,9 @@ from beepboop_audio.events import (
     audio_handshake,
     unix_sockets_supported,
 )
-from beepboop_audio.events.connection import ByteDuplex
-from beepboop_audio.events.examples import EXAMPLE_TURN_ID, example_audio_hello
-from beepboop_audio.events.fake import fake_duplex_pair
+from beepboop_protocol.connection import ByteDuplex
+from beepboop_protocol.examples import EXAMPLE_TURN_ID, example_audio_hello
+from beepboop_protocol.fake import fake_duplex_pair
 
 unix_only = pytest.mark.skipif(not unix_sockets_supported(), reason="no AF_UNIX asyncio server")
 

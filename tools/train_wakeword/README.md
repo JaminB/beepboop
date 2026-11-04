@@ -238,7 +238,8 @@ things to know:
 
 ### 7.1 Nothing NC feeds the shipped model
 
-The upstream notebook's recipe uses datasets that are not cleared for an MIT project: its
+The upstream notebook's recipe uses datasets that are not cleared for a model beepboop
+redistributes (the stock model is released under Apache-2.0, inside a GPL-3.0-or-later project): its
 pre-generated negative features are CC BY-NC 4.0 (and contain CHiME-6 and WHAM! material),
 `fma_xs` is mixed-licence music, AudioSet audio is YouTube content, the MIT IR Survey states no
 licence, and several Piper voices (hfc_female, ryan, l2arctic) are NC. The notebook itself says
@@ -246,18 +247,25 @@ models trained that way are "suitable for non-commercial personal use". The ship
 replaces all of it with LibriSpeech, Speech Commands, VOiCES, MUSAN, OpenSLR 28 and a
 licence-filtered FSD50K.
 
-### 7.2 The lessac provenance flag (OWNER DECISION)
+### 7.2 The lessac provenance (accepted by the owner, D1)
 
 Most Piper English voices, including the 904-speaker LibriTTS-R generator, were fine-tuned from
 the `lessac` voice, whose Blizzard 2013 corpus is licensed for research only. The audio those
 voices were fine-tuned *on* is CC BY / CC0 / public domain, but the weights descend from a
-research-only model. This pipeline treats that as acceptable by default (`shipped: true` with a
-`(see note)` flag in the table) because the generated clips contain none of the lessac corpus,
-but it is a judgement call the owner must make before release. The strict alternative is
-`generator_share: 0` and removing the flagged voices: the from-scratch voices (ljspeech, cori,
-kristin, norman, bryce, john) then supply every clip, at the cost of speaker diversity
-(6 voices instead of ~700). That trade-off is the main reason to collect real clips for the
-bench corpus early.
+research-only model, and the generated clips contain none of the lessac corpus.
+
+**Accepted by the owner 2026-11-03 (D1, [ADR 0020](../../docs/adr/0020-gpl-3-and-espeak-phonemiser.md)):**
+beepboop is a personal/research project, so the lessac-derived voices and the LibriTTS-R generator
+are used for the stock model (`shipped: true` with a `(see note)` flag in the table), and the
+same provenance is accepted for the default TTS voice
+([VOICE_PIPELINE §11.1](../../docs/VOICE_PIPELINE.md#111-default-piper-voices-in-sherpa-onnx-sherpa-piper)).
+
+The **strict profile** stays documented as an option, not the default, for anyone who wants a
+model with no research-only ancestry (for example before a commercial use): set
+`generator_share: 0` and mark the flagged voices `shipped: false`. The from-scratch voices
+(ljspeech, cori, kristin, norman, bryce, john) then supply every clip, at the cost of speaker
+diversity (6 voices instead of ~700). That trade-off is the main reason to collect real clips for
+the bench corpus early.
 
 ### 7.3 Research profile
 
@@ -276,7 +284,6 @@ such a model as `hey_beepboop_v1_research`; it never ships.
 | Dataset sha256s in the config | recorded by step 02 on first download; never invented |
 | VOiCES and MIT IR downloads | no direct URL (S3 bucket; unlicensed mirror) |
 | XVF3800 impulse response | needs the array (VOICE_PIPELINE §6.4, M0 sweep) |
-| Lessac provenance decision (§7.2) | licensing judgement |
 | G5 numbers | `beepboop bench wake` on the soak corpus and the 200-clip fixture, recorded on the Pi (CLAUDE.md §12 steps 9–10) |
 | Publishing the model | release asset + `models/manifest.yaml` row + `models/LICENSES.md` regeneration |
 
@@ -301,23 +308,24 @@ this directory should be read as pre-approving any of that.
 
 1. **AudioSet and MUSAN** (VOICE_PIPELINE §6.4): AudioSet's audio has no redistribution licence,
    so it cannot feed the shipped model; MUSAN (CC BY 4.0) stays. Reported, not changed (doc is
-   outside this step's paths).
+   outside this step's paths). *Resolved 2026-11-03: §6.4 rewritten.*
 2. **`make negatives` "downloads microWakeWord's pre-generated negative features"** (§6.4): those
    features are CC BY-NC 4.0 and include CHiME-6 and WHAM!. The shipped profile generates its own
    negative features from CC BY / CC0 / Apache sources instead; the pre-generated sets remain
-   usable in the research profile (§7.3). §6.4 should say so.
+   usable in the research profile (§7.3). §6.4 should say so. *Resolved 2026-11-03.*
 3. **`models/LICENSES.md` as the home for voice/RIR/noise licences** (§6.4): OPERATIONS §13 says
    that file is *generated* from `models/manifest.yaml`, one row per artefact. The training data
    record therefore lives here in `DATA_LICENSES.md`, referenced from the model's manifest
-   `attribution`; §6.4 should point here.
+   `attribution`; §6.4 should point here. *Resolved 2026-11-03.*
 4. **Piper voice provenance**: the lessac research-only base behind most English Piper voices
-   (§7.2) is not mentioned anywhere in the spec. Needs an owner decision and possibly a line in
-   OPERATIONS §13's deny list.
+   (§7.2) was not mentioned anywhere in the spec. *Resolved 2026-11-03: accepted by the owner
+   (D1, ADR 0020); recorded in OPERATIONS §13, VOICE_PIPELINE §6.4 and §11.1.*
 5. **`make eval` "fails the build on any missed target"** (§6.4): targets are G5 numbers that only
    the soak corpus can produce. Step 06 reports synthetic estimates and only fails with
    `--require-targets`, so a CI run on synthetic data cannot claim or deny a gate.
+   *Resolved 2026-11-03.*
 6. **Pitch shifts in `make synth`** (§6.4): Piper cannot shift pitch; it happens in `make augment`.
-   Same clips, different step.
+   Same clips, different step. *Resolved 2026-11-03.*
 
 ## 11. Known upstream quirks (pinned commit `4665173`)
 

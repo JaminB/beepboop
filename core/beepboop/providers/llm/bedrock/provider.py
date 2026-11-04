@@ -24,6 +24,7 @@ import yaml
 from botocore.awsrequest import AWSRequest
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
+from botocore.tokens import FrozenAuthToken
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from beepboop.log import get_logger
@@ -116,21 +117,40 @@ def load_manifest() -> dict[str, Any]:  # Any: an arbitrary YAML document
     return cast("dict[str, Any]", loaded)
 
 
+class _StaticTokenProvider:
+    """botocore ``token_provider`` component that returns one fixed bearer token.
+
+    Used for ``credentials: bearer_token`` (a long-term Bedrock API key, §3.5),
+    so the key goes from the secret store straight to botocore's bearer signer
+    and never through ``AWS_BEARER_TOKEN_BEDROCK`` in the process environment.
+    """
+
+    def __init__(self, token: SecretStr) -> None:
+        self._token = token
+
+    def load_token(self, **_kwargs: object) -> FrozenAuthToken:
+        return FrozenAuthToken(self._token.get_secret_value())
+
+
 def make_client(
     region: str,
     *,
     profile: str | None = None,
     access_key_id: SecretStr | None = None,
     secret_access_key: SecretStr | None = None,
+    bearer_token: SecretStr | None = None,
     read_timeout_s: float = 10.0,
 ) -> ConverseClient:
     """A ``bedrock-runtime`` client configured for voice latency (§3.6, §3.7).
 
     No retries (the ladder fails sideways instead), a 1 s connect timeout,
-    TCP keep-alive and a two-connection pool kept warm by ``warm()``. With no
-    keys, credentials are ambient (``profile`` / env / instance metadata).
+    TCP keep-alive and a two-connection pool kept warm by ``warm()``.
+    Credentials, in order: ``bearer_token`` (Bedrock API key, sent as
+    ``Authorization: Bearer``), else access keys (SigV4), else ambient
+    (``profile`` / env / instance metadata).
     """
     import boto3
+    import botocore.session
 
     config = Config(
         region_name=region,
@@ -142,7 +162,14 @@ def make_client(
         max_pool_connections=2,
         tcp_keepalive=True,
     )
-    if access_key_id is not None and secret_access_key is not None:
+    if bearer_token is not None:
+        # Pin the bearer signer in code: botocore otherwise picks bearer only when
+        # AWS_BEARER_TOKEN_BEDROCK is set, and we never put the key in the env.
+        config = config.merge(Config(signature_version="bearer"))
+        core_session = botocore.session.Session()
+        core_session.register_component("token_provider", _StaticTokenProvider(bearer_token))
+        session = boto3.Session(botocore_session=core_session, region_name=region)
+    elif access_key_id is not None and secret_access_key is not None:
         session = boto3.Session(
             aws_access_key_id=access_key_id.get_secret_value(),
             aws_secret_access_key=secret_access_key.get_secret_value(),
@@ -198,22 +225,34 @@ class BedrockProvider:
         profile: str | None = None,
         access_key_id: SecretStr | None = None,
         secret_access_key: SecretStr | None = None,
+        bearer_token: SecretStr | None = None,
     ) -> Self:
-        """Build a provider from household settings and (optional) keys."""
-        if settings.credentials == "bearer_token":
-            msg = "bearer_token credentials are not implemented in M0; use access_keys or ambient"
-            raise NotImplementedError(msg)
+        """Build a provider from household settings and the matching secrets.
+
+        ``access_keys`` needs ``aws_access_key_id`` + ``aws_secret_access_key``;
+        ``bearer_token`` needs ``bedrock_bearer_token``; ``ambient`` needs neither.
+        Only the secrets of the selected mode are used.
+        """
         if settings.credentials == "access_keys" and (
             access_key_id is None or secret_access_key is None
         ):
             msg = "credentials=access_keys needs aws_access_key_id and aws_secret_access_key"
             raise AuthError(msg, code="MissingKeys")
-        client = make_client(
-            settings.region,
-            profile=profile,
-            access_key_id=access_key_id,
-            secret_access_key=secret_access_key,
-        )
+        if settings.credentials == "bearer_token" and not (
+            bearer_token and bearer_token.get_secret_value()
+        ):
+            msg = "credentials=bearer_token needs bedrock_bearer_token"
+            raise AuthError(msg, code="MissingKeys")
+        if settings.credentials == "bearer_token":
+            client = make_client(settings.region, bearer_token=bearer_token)
+        elif settings.credentials == "access_keys":
+            client = make_client(
+                settings.region,
+                access_key_id=access_key_id,
+                secret_access_key=secret_access_key,
+            )
+        else:
+            client = make_client(settings.region, profile=profile)
         model = settings.model_fast if alias == "fast" else settings.model_smart
         return cls(client, model)
 

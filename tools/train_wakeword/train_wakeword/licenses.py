@@ -31,7 +31,7 @@ FORBIDDEN_MARKERS: tuple[str, ...] = (
 
 
 def is_forbidden(licence: str) -> bool:
-    """True if a licence cell can never back the shipped (MIT-distributed) model."""
+    """True if a licence cell can never back the shipped (redistributed, Apache-2.0) model."""
     lowered = licence.lower()
     return "-NC" in licence or any(marker in lowered for marker in FORBIDDEN_MARKERS)
 

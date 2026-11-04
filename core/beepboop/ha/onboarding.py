@@ -12,7 +12,7 @@ On first boot core onboards HA itself so nobody ever sees HA's wizard:
  5  ``POST /api/onboarding/analytics`` (nothing enabled)    Bearer
  6  ``POST /api/onboarding/integration`` (result unused)    Bearer, must be a refresh-token session
  7  WS ``auth`` then ``auth/long_lived_access_token``       onboarding access token
- 8  WS ``config/core/update`` {internal_url, external_url}  (only if configured)
+ 8  ``POST /auth/token`` (``action=revoke``, refresh token)  none
  9  ``GET  /api/onboarding``: every step must be done       none
 ==  ======================================================  ==========================
 
@@ -25,7 +25,9 @@ Secrets: the ``beepboop-system`` password is generated here and stored
 *before* the user is created (so a crash can never leave an HA admin whose
 password nobody has); the long-lived token is stored at the end. Both go only
 into the :class:`~beepboop.secrets.SecretStore` (``owner_module="core"``). The
-short-lived access and refresh tokens are dropped when this function returns.
+onboarding refresh token is then revoked server-side (step 8), which also kills
+its access token; neither is kept. HA's canonical URLs are not set here: they
+live in the managed ``configuration.yaml`` block (HOME_ASSISTANT §2.1).
 No token, code or password is ever logged or written to the :class:`OnboardingTrace`.
 """
 
@@ -82,8 +84,6 @@ class OnboardingConfig(BaseModel):
     language: str = "en"
     llat_client_name: str = "beepboop-core"
     llat_lifespan_days: int = Field(default=3650, ge=1)
-    internal_url: str | None = None
-    external_url: str | None = None
     ready_timeout_s: float = Field(default=300.0, gt=0)
     request_timeout_s: float = Field(default=10.0, gt=0)
 
@@ -181,7 +181,7 @@ class HAOnboarding:
             if exc.status == 403:  # someone finished the user step between our two requests
                 return OnboardingResult(status="needs_login", steps_before=before, trace=self.trace)
             raise
-        access_token = await self.exchange_code(auth_code)
+        access_token, refresh_token = await self.exchange_code(auth_code)
 
         if not before.get("core_config", False):
             await self._post_step("core_config", "/api/onboarding/core_config", access_token, {})
@@ -198,6 +198,7 @@ class HAOnboarding:
 
         token, ha_version = await self.mint_long_lived_token(access_token)
         await self._store.put(HA_TOKEN_SECRET, token)
+        await self.revoke_refresh_token(refresh_token)
 
         after = await self.get_status("verify")
         missing = [step for step in HA_STEPS if not after.get(step, False)]
@@ -256,10 +257,11 @@ class HAOnboarding:
             raise OnboardingError("user", _message(reply), status)
         return SecretStr(code)
 
-    async def exchange_code(self, auth_code: SecretStr) -> SecretStr:
-        """``POST /auth/token`` (``grant_type=authorization_code``) → the access token.
+    async def exchange_code(self, auth_code: SecretStr) -> tuple[SecretStr, SecretStr | None]:
+        """``POST /auth/token`` (``grant_type=authorization_code``) → access and refresh token.
 
-        The refresh token is deliberately dropped: the long-lived token replaces it.
+        The refresh token is only kept long enough to revoke it once the
+        long-lived token is stored (:meth:`revoke_refresh_token`).
         """
         form = {
             "grant_type": "authorization_code",
@@ -270,13 +272,29 @@ class HAOnboarding:
         access = _field(reply, "access_token")
         if status != 200 or access is None:
             raise OnboardingError("token", _message(reply), status)
-        return SecretStr(access)
+        refresh = _field(reply, "refresh_token")
+        return SecretStr(access), SecretStr(refresh) if refresh is not None else None
+
+    async def revoke_refresh_token(self, refresh_token: SecretStr | None) -> None:
+        """``POST /auth/token`` (``action=revoke``): end the onboarding session in HA.
+
+        HA keeps refresh tokens server-side until revoked; the long-lived token
+        replaces this one. Best-effort: HA answers 200 whether or not the token
+        existed, and a failure here must not undo a finished onboarding.
+        """
+        if refresh_token is None:
+            return
+        form = {"action": "revoke", "token": refresh_token.get_secret_value()}
+        try:
+            status, _reply = await self._request("revoke", "POST", "/auth/token", data=form)
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            _log().warning("ha.onboarding.revoke_failed", error=type(exc).__name__)
+            return
+        if status != 200:
+            _log().warning("ha.onboarding.revoke_failed", status=status)
 
     async def mint_long_lived_token(self, access_token: SecretStr) -> tuple[SecretStr, str | None]:
-        """WS ``auth/long_lived_access_token`` on the onboarding session.
-
-        Then ``config/core/update`` with the configured URLs, on the same socket.
-        """
+        """WS ``auth/long_lived_access_token`` on the onboarding session."""
         started = time.perf_counter()
         async with HAWebSocket(
             self._session,
@@ -313,27 +331,6 @@ class HAOnboarding:
                     note=f"lifespan_days={self.config.llat_lifespan_days}",
                 )
             )
-            urls = {
-                key: value
-                for key, value in (
-                    ("internal_url", self.config.internal_url),
-                    ("external_url", self.config.external_url),
-                )
-                if value is not None
-            }
-            if urls:
-                started = time.perf_counter()
-                await ws.call("config/core/update", **urls)
-                self.trace.add(
-                    TraceStep(
-                        step="core_urls",
-                        method="WS",
-                        path="config/core/update",
-                        status=None,
-                        elapsed_ms=_ms_since(started),
-                        response_keys=sorted(urls),
-                    )
-                )
             return SecretStr(result), ws.ha_version
 
     # ------------------------------------------------------------ helpers --

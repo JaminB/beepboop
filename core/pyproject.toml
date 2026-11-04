@@ -4,11 +4,12 @@ version = "0.0.0"
 description = "beepboop core service: agent loop, policy, tool registry, HA client, LLM providers, API"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-license = "MIT"
+license = "GPL-3.0-or-later"
 authors = [{ name = "beepboop contributors" }]
 # Pre-declared for the M0 builders (Bedrock probe, HA onboarding, envelope
 # encryption, CLI). Exact versions live in the root uv.lock (hard rule 8).
 dependencies = [
+    "beepboop-protocol",  # event protocol + redacting log setup (ADR 0019)
     "pydantic>=2.11,<3",
     "structlog>=25.0",
     "boto3>=1.40",
@@ -27,6 +28,9 @@ beepboop = "beepboop.cli:main"
 # Entry-point groups used by core (CLAUDE.md §7). Providers register here.
 [project.entry-points."beepboop.llm_providers"]
 bedrock = "beepboop.providers.llm.bedrock.provider:BedrockProvider"
+
+[tool.uv.sources]
+beepboop-protocol = { workspace = true }
 
 [build-system]
 requires = ["hatchling>=1.27"]

@@ -1,0 +1,51 @@
+beepboop
+Copyright (C) 2026 beepboop contributors
+
+beepboop is free software, licensed under the GNU General Public License,
+version 3 or (at your option) any later version (GPL-3.0-or-later). The full
+text is in LICENSE. See docs/adr/0020-gpl-3-and-espeak-phonemiser.md.
+
+"Home Assistant" is a trademark of the Open Home Foundation. beepboop works
+with Home Assistant and is not affiliated with it.
+
+-------------------------------------------------------------------------------
+Third-party models and data (downloaded at install, never vendored)
+-------------------------------------------------------------------------------
+
+Model weights are listed with their licences in models/manifest.yaml and the
+generated models/LICENSES.md. The attributions below are those that their
+licences (CC BY) require when the artifact, or a model trained on it, is
+distributed with beepboop.
+
+Speaker embedding: WeSpeaker CAM++ (VoxCeleb), CC BY 4.0
+  "wespeaker_en_voxceleb_CAM++" by the WeSpeaker project (wenet-e2e),
+  https://github.com/wenet-e2e/wespeaker, trained on VoxCeleb
+  (Nagrani et al. 2017; Chung et al. 2018). ONNX export by the sherpa-onnx
+  project (k2-fsa, Apache-2.0). Licence: https://creativecommons.org/licenses/by/4.0/
+
+STT test clips: LibriSpeech, CC BY 4.0
+  test_wavs/ inside the sherpa-onnx streaming zipformer archive.
+  Panayotov et al. 2015, https://www.openslr.org/12/
+
+Text-to-speech: Piper voice en_US-lessac-low
+  rhasspy/piper (MIT code), trained on the Blizzard 2013 Lessac corpus,
+  https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/license.html
+  Research-only provenance, accepted by the owner for this personal/research
+  project (D1, ADR 0020). espeak-ng-data (GPL-3.0) ships with the voice and is
+  read by the piper-phonemize / espeak-ng phonemiser (GPL-3.0).
+
+Stock "Hey beepboop" wake model (released under Apache-2.0; pending its first
+training run). Its full training-data record is
+tools/train_wakeword/DATA_LICENSES.md. CC BY 4.0 sources it is trained on:
+  - LibriTTS-R (Koizumi et al. 2023), https://www.openslr.org/141/, through the
+    rhasspy/piper-sample-generator en_US-libritts_r-medium checkpoint (MIT code;
+    fine-tuned from the lessac voice, accepted under D1)
+  - LibriSpeech (Panayotov et al. 2015), https://www.openslr.org/12/
+  - Google Speech Commands v0.02 (Warden 2018)
+  - VOiCES (Richey et al. 2018), https://iqtlabs.github.io/voices/
+  - MUSAN (Snyder, Chen, Povey 2015), https://www.openslr.org/17/
+  - FSD50K (Fonseca et al. 2022), CC0 and CC BY clips only; per-clip
+    Freesound uploader credits are kept in the training metadata
+  - Piper voices en_GB-aru-medium (University of Liverpool ARU corpus),
+    en_GB-alba-medium (Edinburgh DataShare) and en_GB-vctk-medium (VCTK)
+  Apache-2.0: OpenSLR 28 RIRs and noises (Ko et al. 2017).

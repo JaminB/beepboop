@@ -31,6 +31,7 @@ EXPECTED_SEQUENCE = [
     "POST /api/onboarding/integration",
     "WS /api/websocket",
     "WS auth/long_lived_access_token",
+    "POST /auth/token",
     "GET /api/onboarding",
 ]
 
@@ -63,6 +64,7 @@ async def test_full_sequence(
         "integration",
         "ws_auth",
         "long_lived_token",
+        "revoke",
         "verify",
     ]
     # One LLAT, minted with the documented name and 10-year lifespan, is what we stored.
@@ -178,15 +180,33 @@ async def test_ws_auth_invalid_is_not_retried(
     assert not await store.exists(HA_TOKEN_SECRET)
 
 
-async def test_sets_internal_and_external_url_when_configured(
+async def test_onboarding_refresh_token_is_revoked(
     fake_ha: FakeHA, ha_url: str, http: aiohttp.ClientSession, store: SecretStore
 ) -> None:
-    result = await _onboarding(
-        http, store, ha_url, internal_url="http://127.0.0.1:8123", external_url=None
-    ).run()
+    await _onboarding(http, store, ha_url).run()
 
-    assert fake_ha.core_urls == {"internal_url": "http://127.0.0.1:8123"}
-    assert "core_urls" in [step.step for step in result.trace.steps]
+    # The only session left in HA is the long-lived token we stored (HOME_ASSISTANT §3).
+    assert len(fake_ha.revoked_refresh_tokens) == 1
+    assert fake_ha.refresh_tokens == set()
+    assert fake_ha.access_tokens == {fake_ha.llats[0]["token"]}
+    assert "WS config/core/update" not in fake_ha.requests  # URLs are YAML-owned (§2.1)
+
+
+async def test_failed_revocation_does_not_undo_onboarding(
+    fake_ha: FakeHA, ha_url: str, http: aiohttp.ClientSession, store: SecretStore
+) -> None:
+    fake_ha.fail_revoke = True
+
+    result = await _onboarding(http, store, ha_url).run()
+
+    assert result.status == "onboarded"
+    assert await store.exists(HA_TOKEN_SECRET)
+    assert fake_ha.requests.count("POST /auth/token") == 2  # exchange + one revoke, no retry
+
+
+def test_config_has_no_url_settings() -> None:
+    # HA's canonical URLs live only in the managed configuration.yaml (hard rule 10).
+    assert "internal_url" not in OnboardingConfig.model_fields
 
 
 def test_config_derives_redirect_and_websocket_urls() -> None:

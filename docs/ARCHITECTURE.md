@@ -76,7 +76,7 @@ The only optional beepboop compose profile in v0.1 is **`music`** (Music Assista
 
 Boundary rules, each with its ADR:
 
-- **Audio never crosses a process boundary** ([ADR 0008](adr/0008-audio-core-process-split.md)). The socket carries JSON text. Embeddings (192 floats) are numbers, not audio, and may cross in both directions. The spoken PIN never crosses at all: core sends the argon2id hash in `capture_pin`, audio verifies and answers `pin.result{outcome}`.
+- **Audio never crosses a process boundary** ([ADR 0008](adr/0008-audio-core-process-split.md)). The socket carries JSON text. Embeddings (`hello.speaker.dim` floats, 512 in v0.1) are numbers, not audio, and may cross in both directions. The spoken PIN never crosses at all: core sends the argon2id hash in `capture_pin`, audio verifies and answers `pin.result{outcome}`.
 - **Policy lives in core, once** ([ADR 0005](adr/0005-risk-tiers-and-grants.md)). The audio service does not know about tiers or grants. Modules do not either; they receive an already-authorized call.
 - **Modules never import MCP, HA or LLM SDKs** ([ADR 0007](adr/0007-module-contract.md)). They get a `ToolContext`. The `ha` client inside it is policy-wrapped; the HA admin token is never visible to a module.
 - **HA is the integration backbone, HA's MCP server is not used** ([ADR 0001](adr/0001-home-assistant-backbone.md)). beepboop is the only enforcement point, so HA must be unreachable from the LAN.
@@ -86,7 +86,7 @@ Boundary rules, each with its ADR:
 
 ## 4. Audio ⇄ core event protocol
 
-This section is the only normative definition of the transport, the envelope and the event catalog. [VOICE_PIPELINE §5](VOICE_PIPELINE.md#5-events-between-audio-and-core) says only *when* each audio-side event fires.
+This section is the only normative definition of the transport, the envelope and the event catalog. [VOICE_PIPELINE §5](VOICE_PIPELINE.md#5-events-between-audio-and-core) says only *when* each audio-side event fires. The protocol is implemented once, as pydantic models in `protocol/beepboop_protocol/` (workspace package `beepboop-protocol`), which both services depend on; it imports nothing audio-capable ([ADR 0019](adr/0019-shared-protocol-package-and-negotiated-embedding-dim.md)). The current protocol major is **2**. Protocol 1 (fixed 192-float embeddings) was never released.
 
 ### 4.1 Transport and framing
 
@@ -103,46 +103,48 @@ This section is the only normative definition of the transport, the envelope and
 | `type` | string | Event name from the catalog below |
 | `seq` | int | Per-sender monotonic counter; gaps are logged, never fatal |
 | `ts` | float | Unix seconds with ms precision (both containers share the host clock). Core records receive time too; the difference is the socket hop in the latency waterfall |
-| `turn_id` | string (ULID) or absent | Assigned by audio at `wake`. Present on every turn-scoped event. Absent on control-plane events |
+| `turn_id` | string (ULID) or absent | Assigned by audio at `wake`. **Required** on the eight canonical events (which include `capture_pin`) and on `pin.result`. **Optional** on `speak.done`, `earcon` and `error`, which carry it when they belong to a turn. **Forbidden** on every other event (`hello`, `health`, `mic.state`, `mute`, `profiles.sync`, `enroll.*`) |
 | `data` | object | Event-specific fields |
 
 Unknown `type` values are ignored and logged at debug level; unknown `data` fields are ignored. Both sides send `hello` first and refuse to proceed on a protocol-major mismatch.
 
 ### 4.2 Event catalog
 
-Events marked **canonical** are the eight turn events; they are the only events that carry turn content (transcripts, identity, speech). The rest are control plane (handshake, health, voiceprint sync, enrollment, playback, mute, PIN outcomes) and carry no transcript text. Field types: `str`, `int`, `float`, `bool`, `?` = optional. `t_*` fields are audio-side `time.monotonic_ns()` capture stamps ([VOICE_PIPELINE §3](VOICE_PIPELINE.md#3-frames-clocks-and-the-ring-buffer)); core uses them to build the latency waterfall.
+Events marked **canonical** are the eight turn events; they are the only events that carry turn content (transcripts, identity, speech). The rest are control plane (handshake, health, voiceprint sync, enrollment, playback, mute, PIN outcomes) and carry no transcript text. Field types: `str`, `int`, `float`, `bool`, `?` = optional. `t_*` fields are audio-side `time.monotonic_ns()` capture stamps ([VOICE_PIPELINE §3](VOICE_PIPELINE.md#3-frames-clocks-and-the-ring-buffer)); core uses them to build the latency waterfall. `turn_id` is never a `data` field; it travels in the envelope under the §4.1 rule.
 
-**Identity in events.** `profile_id` is always present on `speaker.*` events. Guest is encoded as `profile_id: "guest"`, the fixed id of the built-in guest profile, never as an absent field and never as `"GUEST"`.
+**Identity in events.** `profile_id` is always present on `speaker.*` events. Guest is encoded as `profile_id: "guest"`, the fixed id of the built-in guest profile, never as an absent field and never as `"GUEST"`. Every other `profile_id` is the profile's ULID (`profiles.id`).
 
 **Audio → core**
 
 | Event | Fields | When |
 |---|---|---|
-| `hello` | `protocol: 1`, `role: "audio"`, `device: {id, name}`, `wake: {provider, models[]}`, `stt: {provider, locale}`, `tts: {provider, voices[]}`, `speaker: {model_id, model_sha, dim}`, `aec_verified: bool` | On connect |
+| `hello` | `protocol: 2`, `role: "audio"`, `device: {id, name}`, `wake: {provider, models[]}`, `stt: {provider, locale}`, `tts: {provider, voices[]}`, `speaker: {model_id, model_sha, dim: int}`, `aec_verified: bool` | On connect. `speaker.dim` fixes the length of every embedding on this connection (§4.4); 512 for the v0.1 CAM++ model ([VOICE_PIPELINE §8.1](VOICE_PIPELINE.md#81-model)) |
 | **`wake`** (canonical) | `device: str`, `model: str` ("hey_beepboop"), `score: float`, `trigger: "wake"\|"reply"\|"button"`, `preroll_ms: int`, `t_wake: int` | Wake hit, a reply window opened after a `speak` with `listen_after: true` (§5 step 10), or the array button. Opens the turn; audio plays the `wake` earcon itself |
 | **`speaker.provisional`** (canonical) | `profile_id: str` ("guest" when unrecognized), `score: float`, `margin: float`, `stage: "provisional"`, `audio_ms: int` | ~100 ms after wake, from the text-dependent pre-roll |
 | **`speaker.final`** (canonical) | `profile_id: str`, `score`, `margin`, `stage: "final"`, `anchor: bool` (false when no wake phrase was in the audio, i.e. a reply-window turn), `audio_ms`, `candidates: [{profile_id, score}]` (top 3) | At ≤2 s of command audio or end-of-speech, whichever is first. Always precedes `stt.final` |
 | **`stt.partial`** (canonical) | `text: str`, `stable: bool` | Streaming hypothesis, at most one per 200 ms; `stable` prefixes will not change |
 | **`stt.final`** (canonical) | `text: str`, `locale: str`, `speech_ms: int`, `endpoint: "silence"\|"max_len"\|"cancel"`, `empty: bool`, `provider: str`, `t_speech_start: int`, `t_eos: int`, `t_final: int` | End-of-speech. `empty: true` means no speech after the wake word (false wake); core ends the turn silently |
-| `pin.result` | `turn_id`, `approval_id: str`, `outcome: "ok"\|"mismatch"\|"timeout"\|"cancelled"` | After `capture_pin`. Digits never leave the audio process |
+| `pin.result` | `approval_id: str`, `outcome: "ok"\|"mismatch"\|"timeout"\|"cancelled"` | After `capture_pin`. Digits never leave the audio process |
 | `speak.done` | `utterance_id: str`, `reason: "finished"\|"cancelled"\|"error"`, `audio_ms: int`, `t_first_audio: int`, `t_last_audio: int` | Playback of one utterance ended. Lets core close the latency waterfall and open the reply window |
-| `enroll.clip` | `session_id: str`, `index: int`, `accepted: bool`, `quality: {snr_db, clipping, speech_ratio, duration_ms}`, `embedding: float[192]?` | One enrollment clip captured and gated; embedding present only if accepted |
+| `enroll.clip` | `session_id: str`, `index: int`, `accepted: bool`, `quality: {snr_db, clipping, speech_ratio, duration_ms}`, `embedding: float[dim]?` | One enrollment clip captured and gated; embedding present exactly when `accepted` |
 | `mic.state` | `muted: bool`, `source: "hardware"\|"software"` | On change. Core shows it in the UI and refuses to start turns while muted |
-| `health` | `cpu_temp_c`, `throttled: bool`, `stt_rtf: float`, `playback_queue_ms: int`, `models_loaded: bool` | Every 10 s |
+| `health` | `cpu_temp_c: float`, `throttled: bool`, `stt_rtf: float`, `playback_queue_ms: int`, `models_loaded: bool`, `aec_verified: bool` | Every 10 s. `aec_verified` repeats the `hello` value so a runtime change is visible |
 | `error` | `code: str`, `message: str`, `fatal: bool` | Anything else |
 
 **Core → audio**
 
 | Event | Fields | When |
 |---|---|---|
-| `hello` | `protocol: 1`, `role: "core"` | On connect |
-| **`speak`** (canonical) | `utterance_id: str`, `seq: int`, `last: bool`, `text: str?`, `clip: str?` (a pre-rendered clip or system phrase key, [VOICE_PIPELINE §11.3](VOICE_PIPELINE.md#113-cached-clips-and-earcons)), `voice: {voice_id: str, rate: float}`, `locale: str`, `listen_after: bool` | One sentence at a time as the LLM streams; audio queues them in `seq` order per turn. `last: true` marks the final sentence of the reply |
+| `hello` | `protocol: 2`, `role: "core"` | On connect |
+| **`speak`** (canonical) | `utterance_id: str`, `seq: int`, `last: bool`, `text: str?`, `clip: str?` (a clip key, below), `voice: {voice_id: str, rate: float}`, `locale: str`, `listen_after: bool` | One sentence at a time as the LLM streams; audio queues them in `seq` order per turn. `last: true` marks the final sentence of the reply |
 | **`cancel`** (canonical) | `reason: "barge_in"\|"superseded"\|"error"\|"user"` | Stop STT/TTS for this turn, flush the playback queue |
-| **`capture_pin`** (canonical) | `turn_id`, `approval_id: str`, `pin_hash: str` (argon2id), `min_len: 4`, `max_len: 8`, `timeout_ms: 10000`, `prompt: str?` | Policy needs a spoken PIN. Audio speaks the prompt, listens with a digits-only STT grammar, verifies locally, answers `pin.result`. Length, timeout and lockout rules: [IDENTITY_AND_TRUST §8.4](IDENTITY_AND_TRUST.md#84-spoken-pin-fallback-optional-per-profile) |
+| **`capture_pin`** (canonical) | `approval_id: str`, `pin_hash: str` (argon2id), `min_len: 4`, `max_len: 8`, `timeout_ms: 10000`, `prompt: str?` | Policy needs a spoken PIN. Audio speaks the prompt, listens with a digits-only STT grammar, verifies locally, answers `pin.result`. Length, timeout and lockout rules: [IDENTITY_AND_TRUST §8.4](IDENTITY_AND_TRUST.md#84-spoken-pin-fallback-optional-per-profile) |
 | `earcon` | `name: str` from the single earcon list in [VOICE_PIPELINE §13.1](VOICE_PIPELINE.md#131-state-table) | Non-speech feedback; the audible-feedback guarantee usually rides on `ack` |
 | `mute` | `on: bool`, `until: float?` | Software mute from the UI, API or a schedule; audio answers with `mic.state`. Software mute cannot override a hardware mute |
-| `profiles.sync` | `profiles: [{profile_id, centroids: float[k][192], calib: {tau: {act, personal}, margin: {act, personal}}, hotwords: str[], voice: {voice_id, rate}, locale}]`, `cohort_sha: str`, `model_id: str` | On connect and whenever a voiceprint, vocabulary or voice changes. Audio keeps this in memory only |
+| `profiles.sync` | `profiles: [{profile_id, centroids: float[k][dim], calib: {tau: {act, personal}, margin: {act, personal}}, hotwords: str[], voice: {voice_id, rate}, locale}]`, `cohort_sha: str`, `model_id: str` | On connect and whenever a voiceprint, vocabulary or voice changes. Audio keeps this in memory only |
 | `enroll.start` / `enroll.stop` | `session_id`, `profile_id`, `mode: "wake"\|"free"`, `prompts: str[]` / `session_id` | Driven by the web UI enrollment wizard |
+
+**Clip keys (`speak.clip`).** A key matches `[a-z0-9_.]{1,64}` and names one of: a system-phrase key ([VOICE_PIPELINE §11.6](VOICE_PIPELINE.md#116-system-phrases-normative)), an ack key from the pre-rendered clip set ([VOICE_PIPELINE §11.3](VOICE_PIPELINE.md#113-cached-clips-and-earcons)), or an earcon name ([VOICE_PIPELINE §13.1](VOICE_PIPELINE.md#131-state-table)). A key that is both a spoken key and an earcon name (`done`, `cancel`, `offline`) plays the spoken clip; send `earcon{name}` for the bare sound. Every `speak` has `clip`, `text` or both. With both, audio plays the clip and synthesizes `text` only when it has no clip for the key. With `clip` alone and an unknown key, audio plays the `error` earcon and reports `speak.done{reason: "error"}`.
 
 ### 4.3 Example: "Hey beepboop, turn off the kitchen lights" (fast path)
 
@@ -157,7 +159,29 @@ Events marked **canonical** are the eight turn events; they are the only events 
 ← {"type":"speak.done","seq":7,"ts":1793657612.010,"turn_id":"01JBX…","data":{"utterance_id":"u1","reason":"finished","audio_ms":350,"t_first_audio":812333940000,"t_last_audio":812334290000}}
 ```
 
-End-of-speech at `.560`, first audio at ≈`.69` (cached clip, no TTS): ≈0.45 s after endpoint. Per-stage timings land in `turns.stages_ms_json` and render as the Activity waterfall.
+End-of-speech at `.560`, first audio at ≈`.69` (cached clip, no TTS): ≈0.45 s after endpoint. Per-stage timings land in `turns.stages_ms_json` and render as the Activity waterfall. The example abbreviates ULIDs: `01JBX…` stands for the turn's ULID, and `alex` and `sam` for the two profiles' ULIDs.
+
+### 4.4 Framing and validation rules
+
+Limits and invariants both sides enforce. The catalog above gives field names and types; these add the values and cross-field rules. An event that breaks one is refused by the sender and, if it arrives anyway, dropped by the receiver with a warning that lists field locations and error kinds, never values (a transcript or PIN hash never reaches a log line).
+
+| Rule | Value |
+|---|---|
+| Line length | At most 1 MiB (1 048 576 bytes) excluding the `\n`. A receiver discards a longer line up to its newline and resynchronizes |
+| `seq` | Starts at 1 per sender per connection |
+| `hello` timeout | Each side waits 5 s for the peer's `hello`, then closes |
+| Socket | File mode `0660`. Audio replaces a stale socket file at the path and never deletes a regular file there |
+| Reconnect | Core's backoff doubles from 0.5 s to a 5 s cap, without jitter (there is one client), and resets after a successful handshake. Only transport and handshake errors reconnect |
+| Types | Strict: no coercion (`"5"` is not an int), no NaN or Infinity, unknown fields ignored |
+| `profile_id` | A ULID or exactly `"guest"`. `enroll.start` never names `guest`. `profiles.sync` lists each profile once |
+| Embeddings | 1 to 4096 finite floats, and exactly `hello.speaker.dim` of them on this connection ([ADR 0019](adr/0019-shared-protocol-package-and-negotiated-embedding-dim.md)). All centroids in one `profiles.sync` have the same length |
+| `speaker.final.candidates` | At most 3, sorted by `score` best first, no `profile_id` twice |
+| `stt.final` | `empty: true` means blank `text`. `t_eos ≤ t_final`, and `t_speech_start ≤ t_eos` unless `empty` |
+| `enroll.clip` | `embedding` present exactly when `accepted`. `quality.clipping` and `quality.speech_ratio` are fractions from 0 to 1 |
+| `wake.score` | 0 to 1 |
+| `speak` | `text`, when present, is not blank. `voice.rate` is above 0 and at most 4 |
+| `capture_pin` | `pin_hash` is an argon2id PHC string and is never logged. `4 ≤ min_len ≤ max_len ≤ 8`. `timeout_ms` is 1 to 60 000 (default 10 000) |
+| `mute.until` | Unix seconds, present only with `on: true` |
 
 ---
 
@@ -276,7 +300,7 @@ Two places, one rule: **the file holds hardware and provider ids; anything edita
 | Source | Path | Holds | Changed by |
 |---|---|---|---|
 | Household config file | host `/srv/beepboop/config/beepboop.yaml`, mounted read-only at `/config/beepboop.yaml` into core and audio | device id/name, locale, ALSA device + XVF3800 firmware variant, thread counts, audio provider ids (wake/stt/tts/speaker), canonical URL + HTTPS tier, HA loopback URL, log level. Audio reads only its `audio:` and `providers:` sections ([VOICE_PIPELINE §17.1](VOICE_PIPELINE.md#171-audio-keys-in-configbeepboopyaml)) | Editing the file; shown read-only under System › Health in the UI |
-| Environment | compose `environment:` (prefix `BB_`) | `BB_CONFIG`, `BB_AUDIO_SOCKET`, `BB_ALSA_DEVICE` (the one ALSA env var), `BB_KEK_PASSPHRASE_FILE` (dev boards without OTP), `BB_LOG_FORMAT` | compose file |
+| Environment | compose `environment:` (prefix `BB_`) | `BB_CONFIG`, `BB_AUDIO_SOCKET`, `BB_ALSA_DEVICE` (the one ALSA env var), `BB_KEK_PASSPHRASE_FILE` (the v0.1 KEK source; OTP is an optional later upgrade), `BB_LOG_FORMAT`. The deploy-time `.env` keys that compose interpolates (`BB_HOST`, `BB_MEM_*` RAM profile, image digests) are listed in [OPERATIONS §3](OPERATIONS.md#3-compose-layout) | compose file |
 | Database | `/srv/beepboop/core/beepboop.db` (SQLite WAL, [ADR 0011](adr/0011-sqlite-single-file.md)) | profiles, logins, sessions, groups, grants, voiceprints (incl. calibrated thresholds), integrations + module settings, LLM aliases/ladder/model/effort, retention days, backup schedule and destinations, encrypted secrets (HA token, Bedrock keys, CalDAV app passwords), turns, tool_calls, approvals, kv | Web UI / API / CLI |
 
 ```yaml
@@ -299,7 +323,7 @@ ha: {url: http://127.0.0.1:8123}
 log: {level: info}
 ```
 
-LLM aliases, the fallback ladder, model and effort are database settings defined only in [LLM_PROVIDERS §2.1](LLM_PROVIDERS.md#21-registration-and-configuration). Speaker thresholds are per-household calibrated values in `voiceprints.calib_json` with starting defaults in [VOICE_PIPELINE §8.4](VOICE_PIPELINE.md#84-accept-rule-and-per-tier-thresholds). Secrets are envelope-encrypted in the `secrets` table (data key wrapped by a KEK derived from the Pi OTP device key, or a passphrase on dev boards). See [DATA_AND_PRIVACY.md](DATA_AND_PRIVACY.md).
+LLM aliases, the fallback ladder, model and effort are database settings defined only in [LLM_PROVIDERS §2.1](LLM_PROVIDERS.md#21-registration-and-configuration). Speaker thresholds are per-household calibrated values in `voiceprints.calib_json` with starting defaults in [VOICE_PIPELINE §8.4](VOICE_PIPELINE.md#84-accept-rule-and-per-tier-thresholds). Secrets are envelope-encrypted in the `secrets` table (data key wrapped by a passphrase-wrapped KEK in v0.1; the Pi OTP key is an optional later KEK source, [DATA_AND_PRIVACY §6.3](DATA_AND_PRIVACY.md#63-envelope-encryption)). See [DATA_AND_PRIVACY.md](DATA_AND_PRIVACY.md).
 
 ---
 
@@ -362,7 +386,7 @@ Cancellation is cooperative and keyed by `turn_id` end to end: audio `cancel` �
 | Earcons | WAV pack by name; one directory per theme; names in [VOICE_PIPELINE §13.1](VOICE_PIPELINE.md#131-state-table) | `/models/earcons/` | v0.1 |
 | Module settings UI | Auto-rendered from `settings` JSON Schema in the manifest; no UI code | `ui/` | v0.1 |
 | Roles | Presets are grant templates + ceiling + schedule in YAML; add a preset, not code | `core/beepboop/policy/presets/` | v0.1 |
-| Remote microphones | Wyoming satellite server into the audio service | `audio/beepboop_audio/events/` | v0.3 |
+| Remote microphones | Wyoming satellite server into the audio service | `audio/beepboop_audio/satellite/` | v0.3 |
 | External MCP clients | `/mcp` front door, OAuth 2.1 + PATs | `core/beepboop/mcp/` | v0.2 |
 
 ---

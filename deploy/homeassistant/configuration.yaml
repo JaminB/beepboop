@@ -1,9 +1,10 @@
 # managed by beepboop -- do not hand-edit this block.
 #
-# Template for /srv/beepboop/ha/configuration.yaml. beepboop writes it at
-# onboarding (docs/HOME_ASSISTANT.md §2.1 owns the content; OPERATIONS §7 the
-# recorder budget). internal_url/external_url must equal beepboop's canonical
-# URL (https://$BB_HOST); onboarding substitutes the configured host.
+# Template for /srv/beepboop/ha/configuration.yaml (docs/HOME_ASSISTANT.md §2.1
+# owns the content; OPERATIONS §7 the recorder budget). install.sh renders it,
+# replacing https://beepboop.local with https://$BB_HOST from deploy/.env. This
+# block is the ONLY place HA's internal_url/external_url are set (hard rule 10):
+# onboarding does not call config/core/update.
 
 default_config:
 

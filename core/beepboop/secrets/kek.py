@@ -1,16 +1,23 @@
 """Key-encryption keys (KEK): where they come from (DATA_AND_PRIVACY §6.3).
 
-Two sources, tried in this order by :func:`resolve_kek`:
+Two sources (owner decision D3, 2026-11-03: the passphrase is the v0.1 default;
+the installer does not program OTP):
 
-1. **OTP (a Pi with a programmed key).** ``KEK = HKDF-SHA256(ikm=otp_key,
-   salt=device_salt, info="beepboop/kek/v<kek_version>")``. Nothing secret is
-   on disk; the board unlocks itself at boot. ``kek_version`` is part of the
-   HKDF ``info`` so that KEK rotation (``kek_version++``) yields a new KEK from
-   the same, unchangeable OTP key.
-2. **Passphrase (dev machines, CI, a Pi without OTP).** A random 32-byte KEK is
+1. **Passphrase (the default on every board).** A random 32-byte KEK is
    wrapped by ``argon2id(passphrase, device_salt)`` and stored in
-   ``keys/kek.passphrase.wrapped``. Changing the passphrase re-wraps one file;
-   the DEKs in the keyring are untouched.
+   ``keys/kek.passphrase.wrapped``; the passphrase comes from
+   ``BB_KEK_PASSPHRASE_FILE`` at boot. Changing the passphrase re-wraps one
+   file; the DEKs in the keyring are untouched.
+2. **OTP (optional later upgrade).** ``KEK = HKDF-SHA256(ikm=otp_key,
+   salt=device_salt, info="beepboop/kek/v<kek_version>")`` on a Pi whose OTP
+   key the owner programmed. Nothing secret is on disk. ``kek_version`` is part
+   of the HKDF ``info`` so that KEK rotation (``kek_version++``) yields a new KEK
+   from the same, unchangeable OTP key.
+
+:func:`resolve_kek` uses an existing passphrase file first, because that is the
+KEK the keyring was wrapped with: programming OTP later (for beepboop or for
+anything else, such as a LUKS provisioner) must not strand the data. Moving an
+install to OTP is an explicit ``rotate_kek`` followed by deleting the file.
 
 ``device_salt`` is 32 random bytes created once at install (``keys/device_salt``)
 and never rotated; a reinstalled Pi therefore derives a different KEK.
@@ -200,13 +207,22 @@ def resolve_kek(
     create_passphrase_file: bool = False,
     params: Argon2Params | None = None,
 ) -> Kek:
-    """Pick the KEK for this board: OTP if programmed, else the passphrase file.
+    """Pick the KEK for this board (DATA_AND_PRIVACY §6.3, D3).
 
+    An existing ``keys/kek.passphrase.wrapped`` always wins. Without one, an
+    OTP key is used if the owner programmed it, else a passphrase file is
+    created (``create_passphrase_file``, the installer's default path).
     ``otp_reader`` returns the OTP key, ``None`` when unprogrammed, or raises
-    :class:`beepboop.secrets.otp.OtpUnavailableError` off-Pi; both fall through to
-    the passphrase. ``otp_kek_version`` comes from the keyring (§6.1).
+    :class:`beepboop.secrets.otp.OtpUnavailableError` off-Pi.
+    ``otp_kek_version`` comes from the keyring (§6.1).
     """
     device_salt = load_device_salt(keys_dir)
+    path = keys_dir / PASSPHRASE_KEK_FILE
+    if path.exists():
+        if passphrase is None:
+            msg = f"{path} exists but no BB_KEK_PASSPHRASE_FILE is configured"
+            raise KekUnavailableError(msg)
+        return load_passphrase_kek(path, passphrase, device_salt)
     try:
         otp_key = otp_reader()
     except OtpUnavailableError:
@@ -216,9 +232,6 @@ def resolve_kek(
     if passphrase is None:
         msg = "no OTP key on this board and no BB_KEK_PASSPHRASE_FILE configured"
         raise KekUnavailableError(msg)
-    path = keys_dir / PASSPHRASE_KEK_FILE
-    if path.exists():
-        return load_passphrase_kek(path, passphrase, device_salt)
     if not create_passphrase_file:
         msg = f"{path} is missing; create it at install"
         raise KekUnavailableError(msg)

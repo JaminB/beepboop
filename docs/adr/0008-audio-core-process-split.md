@@ -14,6 +14,8 @@ The latency-critical path is wake → VAD → STT → (fast path or LLM) → TTS
 
 Two containers. The audio service holds the ALSA device, runs with `network_mode: none`, is pinned to cores 2–3 with `nice -5` and a real-time capture thread, and has its own `mem_limit` and a lower `oom_score_adj`. It emits `wake`, `speaker.provisional {profile_id|GUEST, score, margin}`, `speaker.final {...}`, `stt.partial {text}`, `stt.final {text, locale}` and consumes `speak {text, voice, turn_id}`, `cancel {turn_id}` and `capture_pin {turn_id, profile_id}`; in PIN mode it hashes and compares locally and replies with a boolean. Framing is JSON-lines over a unix socket in a shared tmpfs; the protocol is defined by pydantic models in `audio/beepboop_audio/events/`. Wyoming is used only at the edges: a client adapter for external STT/TTS servers and, later, a satellite server. Core never sees PCM, and the audio service never sees the network.
 
+> **Amended 2026-11-03.** The event names and fields above are a sketch; [ARCHITECTURE §4](../ARCHITECTURE.md#4-audio--core-event-protocol) is the protocol. The pydantic models now live in one package shared by both services, `protocol/beepboop_protocol/` (`beepboop-protocol`), not in `audio/beepboop_audio/events/`, so core does not depend on the audio package ([ADR 0019](0019-shared-protocol-package-and-negotiated-embedding-dim.md)).
+
 ## Consequences
 
 - The latency-critical path has zero audio hops; M0 can measure each stage independently.

@@ -4,7 +4,8 @@ Layers, bottom up:
 
 * :mod:`~beepboop.secrets.envelope`: XChaCha20-Poly1305 envelope format.
 * :mod:`~beepboop.secrets.otp`: read the Pi's OTP private key via ``/dev/vcio``.
-* :mod:`~beepboop.secrets.kek`: KEK from OTP (HKDF) or a passphrase-wrapped file (argon2id).
+* :mod:`~beepboop.secrets.kek`: KEK from a passphrase-wrapped file (argon2id; the v0.1
+  default, D3) or, as an optional upgrade, from the Pi OTP key (HKDF).
 * :mod:`~beepboop.secrets.store`: ``keyring`` + ``secrets`` tables with DEK/KEK rotation.
 
 Typical use::

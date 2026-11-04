@@ -7,6 +7,7 @@ members = [
     "beepboop",
     "beepboop-audio",
     "beepboop-bench",
+    "beepboop-protocol",
     "beepboop-workspace",
 ]
 
@@ -149,6 +150,7 @@ source = { editable = "core" }
 dependencies = [
     { name = "aiohttp" },
     { name = "argon2-cffi" },
+    { name = "beepboop-protocol" },
     { name = "boto3" },
     { name = "botocore" },
     { name = "cryptography" },
@@ -163,6 +165,7 @@ dependencies = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.12" },
     { name = "argon2-cffi", specifier = ">=25.1" },
+    { name = "beepboop-protocol", editable = "protocol" },
     { name = "boto3", specifier = ">=1.40" },
     { name = "botocore", specifier = ">=1.40" },
     { name = "cryptography", specifier = ">=45.0" },
@@ -178,7 +181,9 @@ name = "beepboop-audio"
 version = "0.0.0"
 source = { editable = "audio" }
 dependencies = [
+    { name = "beepboop-protocol" },
     { name = "numpy" },
+    { name = "piper-phonemize" },
     { name = "pydantic" },
     { name = "pymicro-wakeword" },
     { name = "sherpa-onnx" },
@@ -188,7 +193,9 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "beepboop-protocol", editable = "protocol" },
     { name = "numpy", specifier = ">=2.1" },
+    { name = "piper-phonemize", specifier = "==1.5.9", index = "https://k2-fsa.github.io/icefall/piper_phonemize.html" },
     { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "pymicro-wakeword", specifier = "==2.5.0" },
     { name = "sherpa-onnx", specifier = "==2.0.1" },
@@ -210,23 +217,31 @@ dependencies = [
     { name = "typer" },
 ]
 
-[package.optional-dependencies]
-phonemize = [
-    { name = "piper-phonemize" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "beepboop", editable = "core" },
     { name = "beepboop-audio", editable = "audio" },
     { name = "numpy", specifier = ">=2.1" },
-    { name = "piper-phonemize", marker = "extra == 'phonemize'", specifier = ">=1.5.0", index = "https://k2-fsa.github.io/icefall/piper_phonemize.html" },
     { name = "psutil", specifier = ">=7.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=14.0" },
     { name = "typer", specifier = ">=0.16" },
 ]
-provides-extras = ["phonemize"]
+
+[[package]]
+name = "beepboop-protocol"
+version = "0.0.0"
+source = { editable = "protocol" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "structlog" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.11,<3" },
+    { name = "structlog", specifier = ">=25.0" },
+]
 
 [[package]]
 name = "beepboop-workspace"
@@ -236,6 +251,7 @@ dependencies = [
     { name = "beepboop" },
     { name = "beepboop-audio" },
     { name = "beepboop-bench" },
+    { name = "beepboop-protocol" },
 ]
 
 [package.dev-dependencies]
@@ -258,6 +274,7 @@ requires-dist = [
     { name = "beepboop", editable = "core" },
     { name = "beepboop-audio", editable = "audio" },
     { name = "beepboop-bench", editable = "tools/bench" },
+    { name = "beepboop-protocol", editable = "protocol" },
 ]
 
 [package.metadata.requires-dev]

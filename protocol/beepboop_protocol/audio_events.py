@@ -15,8 +15,8 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import Field, model_validator
 
-from beepboop_audio.events.envelope import (
-    EMBEDDING_DIM,
+from beepboop_protocol.envelope import (
+    MAX_EMBEDDING_DIM,
     Embedding,
     EventBase,
     Locale,
@@ -52,16 +52,11 @@ class TtsInfo(WireModel):
 
 
 class SpeakerInfo(WireModel):
+    """The active speaker model. ``dim`` fixes every embedding's length on this connection."""
+
     model_id: Name
     model_sha: Name
-    dim: int
-
-    @model_validator(mode="after")
-    def _fixed_dim(self) -> SpeakerInfo:
-        # Embeddings are 192 floats in protocol 1; another size needs a protocol bump.
-        if self.dim != EMBEDDING_DIM:
-            raise ValueError(f"speaker dim must be {EMBEDDING_DIM} in protocol 1")
-        return self
+    dim: int = Field(ge=1, le=MAX_EMBEDDING_DIM)
 
 
 class AudioHelloData(WireModel):
@@ -271,6 +266,9 @@ class EnrollClipEvent(EventBase):
     type: Literal["enroll.clip"] = "enroll.clip"
     data: EnrollClipData
 
+    def embedding_lengths(self) -> tuple[int, ...]:
+        return () if self.data.embedding is None else (len(self.data.embedding),)
+
 
 # ------------------------------------------------------------- mic / health --
 
@@ -286,11 +284,14 @@ class MicStateEvent(EventBase):
 
 
 class HealthData(WireModel):
+    """Periodic status. ``aec_verified`` repeats ``hello``'s so a runtime change is visible."""
+
     cpu_temp_c: float
     throttled: bool
     stt_rtf: float = Field(ge=0.0)
     playback_queue_ms: Millis
     models_loaded: bool
+    aec_verified: bool
 
 
 class HealthEvent(EventBase):

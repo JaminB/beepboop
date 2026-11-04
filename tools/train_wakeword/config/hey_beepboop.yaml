@@ -4,7 +4,7 @@
 # `train-wakeword check` fails if a row is missing or if anything marked
 # `shipped: true` carries a licence that forbids commercial use or redistribution.
 #
-# `shipped: true`  -> may feed the model distributed with beepboop (MIT project).
+# `shipped: true`  -> may feed the model distributed with beepboop (released Apache-2.0).
 # `shipped: false` -> research/experiment profile only (`--profile research`);
 #                     05_export refuses to export a shippable manifest from it.
 
@@ -42,8 +42,8 @@ positives:
       max_speakers: 600
       shipped: true
       note: >
-        Fine-tuned by its author from the lessac voice; see DATA_LICENSES.md for the
-        provenance flag and the owner decision it needs.
+        Fine-tuned by its author from the lessac voice (research-only provenance);
+        accepted by the owner 2026-11-03 (D1, ADR 0020). See DATA_LICENSES.md.
     # Single-speaker Piper voices for timbre diversity (.onnx + .onnx.json each).
     - { id: en_US-ljspeech-medium, kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx", license_id: piper_ljspeech, shipped: true }
     - { id: en_US-kristin-medium,  kind: piper, url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kristin/medium/en_US-kristin-medium.onnx",   license_id: piper_kristin,  shipped: true }

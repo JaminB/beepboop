@@ -156,14 +156,30 @@ def test_license_problems_and_render() -> None:
         models=[
             _entry(),
             _entry(id="nc", license="CC-BY-NC-4.0"),
-            _entry(id="gpl", license="GPL-3.0-only"),
             _entry(id="unk", license="UNKNOWN"),
+            _entry(id="gpl2only", license="GPL-2.0-only"),
+            _entry(id="proprietary", license="LicenseRef-Proprietary"),
+            _entry(id="empty", license=" "),
+            # Allowed under GPL-3.0-or-later (ADR 0020): copyleft, CC BY, D1's ruling.
+            _entry(id="gpl3", license="GPL-3.0-only"),
+            _entry(id="gpl2plus", license="GPL-2.0-or-later"),
+            _entry(id="lgpl", license="LGPL-2.1-or-later"),
+            _entry(id="ccby", license="CC-BY-4.0"),
+            _entry(id="lessac", license="LicenseRef-Blizzard-2013-Lessac"),
+            _entry(id="and", license="Apache-2.0 AND CC-BY-4.0"),
+            _entry(id="or", license="LicenseRef-Proprietary OR MIT"),
         ]
     )
     problems = license_problems(manifest)
-    assert len(problems) == 3
-    assert all(p.split(":")[0] in {"nc", "gpl", "unk"} for p in problems)
+    assert sorted(p.split(":")[0] for p in problems) == [
+        "empty",
+        "gpl2only",
+        "nc",
+        "proprietary",
+        "unk",
+    ]
     text = render_licenses(manifest)
     assert text.startswith("# Model licences")
     assert "| `silero-vad` | vad | MIT |" in text
+    assert "GPL-3.0-or-later" in text
     assert render_licenses(manifest) == text

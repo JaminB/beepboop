@@ -124,7 +124,7 @@ class Usage(BaseModel):
     output_tokens: int
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
-    ttft_ms: int | None = None    # measured by the adapter: request sent → first event
+    ttft_ms: int | None = None    # measured by the adapter: request sent → first TextDelta or ToolCallStart
 
 class Done(BaseModel):
     type: Literal["done"] = "done"
@@ -213,11 +213,11 @@ Ids are configuration, never literals in code. The `global.` profile has no pric
 | `Request` | Converse parameter |
 |---|---|
 | `system[]` | `system: [{text}, …]` with `{"cachePoint": {"type": "default"}}` (plus `"ttl": "1h"` if the block says so) inserted after each `cache: true` block; Bedrock allows up to 4 |
-| `tools[]` | `toolConfig.tools[].toolSpec{name, description, inputSchema.json}`; names keep dots (Converse allows `[a-zA-Z0-9_-]`? — **M0 verifies**; if dots are rejected, map `.`→`__`) ; `toolChoice: {auto: {}}` always (forced `any`/`tool` is rejected by Sonnet 5.5) |
+| `tools[]` | `toolConfig.tools[].toolSpec{name, description, inputSchema.json}`; `toolChoice: {auto: {}}` always (forced `any`/`tool` is rejected by Sonnet 5.5). **Names: `.` → `__` on the way out, `__` → `.` on the way back** (`home.turn_on` ↔ `home__turn_on`), always. Converse's tool-name pattern is `[a-zA-Z0-9_-]+` (botocore's service model), and the 2026-11-02 preliminary run accepted `home__turn_off`. This is the one mapping for every door: `openai_compat` (§4) and `/mcp` ([MCP §3](MCP.md#3-door-2-external-mcp-v02-invariants)) use it too, so module verbs never contain `__` |
 | `messages[]` | `messages[]` with `text`, `toolUse{toolUseId,name,input}`, `toolResult{toolUseId,content:[{text}],status}` blocks |
 | `max_tokens` | `inferenceConfig.maxTokens` — **always set**; an unset value reserves the model's maximum against quota and causes throttling |
 | `stop` | `inferenceConfig.stopSequences` |
-| `effort` | `additionalModelRequestFields`: Haiku 5.5 → `{"thinking": {"type": "disabled"}}` at `low`/`medium` (permitted at effort ≤ high), else `{"thinking": {"type": "adaptive"}, "output_config": {"effort": …}}`; Sonnet 5.5 cannot disable thinking → `{"thinking": {"type": "between_tools"}}` at `low`. Exact field names are checked against the Bedrock model cards in M0 |
+| `effort` | `additionalModelRequestFields`. Haiku 5.5: `low` and `medium` send **only** `{"thinking": {"type": "disabled"}}` and **no** `output_config.effort`, so output effort is the model default (medium); `high` sends `{"thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}}`. Sonnet 5.5 cannot disable thinking: `low` sends `{"thinking": {"type": "between_tools"}}` (no explicit effort), `medium`/`high` send adaptive thinking with `output_config.effort`. The Haiku 4.5 fallback gets no effort fields. Thinking disabled on Haiku 5.5 was accepted live with no reasoning blocks (2026-11-02, preliminary, x86); whether an explicit `output_config.effort: "low"` is accepted alongside it and is faster is §14 Q2 |
 | temperature / top_p | never sent (non-default values are rejected by the 5.5 models) |
 | `metadata` | not sent. No `requestMetadata`; profile ids stay on the Pi |
 | guardrail (v0.2, §11) | `guardrailConfig{guardrailIdentifier, guardrailVersion, trace: "disabled", streamProcessingMode: "sync"}` when the profile's kind requires it |
@@ -244,7 +244,7 @@ Thinking blocks (`reasoningContent`) are consumed and dropped; they are never sp
 
 The registry builds the prompt as in §8 and marks exactly one block `cache: true`: the last stable block (the module cards). The adapter therefore emits **one** `cachePoint` after persona → core tool list → module cards, and tools are in `toolConfig` (also part of the cached prefix on Bedrock). Rules:
 
-- The minimum cacheable prefix is model-specific (published figures range 1,024–4,096 tokens; none yet for Haiku 5.5). `beepboop bench llm` prints `cacheReadInputTokens` on the second call and **M0 records the threshold**. If a profile's prefix is under it, caching silently does nothing; we pad nothing.
+- The minimum cacheable prefix is model-specific (published figures range 1,024–4,096 tokens; Anthropic's own API documents a lower one for Haiku 5.5, and Bedrock's is unpublished). **Observed:** a 2,388-token prefix was written and then read on Haiku 5.5 via the global profile (2026-11-02, preliminary, x86 workstation, [results](../tools/bench/results/2026-11-02-workstation-g3-preliminary.json)), so the threshold is at most that. The exact threshold is still an **open M0 measurement**: `beepboop bench llm` prints `cacheReadInputTokens` on the second call. If a profile's prefix is under it, caching silently does nothing; we pad nothing.
 - `ttl: "1h"` suits a household that talks less than once per 5 minutes; the write costs 2× instead of 1.25×, so the admin UI exposes it as "keep the assistant warm for an hour" and `bench` reports the break-even.
 - Anything volatile (time, speaker name, conversation) is in the last `SystemBlock` *after* the cache point. Tool definitions are byte-stable (sorted keys, sorted names, no timestamps); a CI test renders the prompt twice and asserts byte equality up to the cache point.
 - One prefix per profile (persona overrides and module cards differ per person).
@@ -255,7 +255,7 @@ The registry builds the prompt as in §8 and marks exactly one block `cache: tru
 | Option | How | When |
 |---|---|---|
 | **IAM user access keys** (default) | Pasted in the web UI, envelope-encrypted in `secrets(owner_module="llm.bedrock")`, injected into the boto3 session at start; never written to `~/.aws` | v0.1 default. Long-lived: the UI nags at 180 days to rotate |
-| Long-term Bedrock API key | One string, `AWS_BEARER_TOKEN_BEDROCK` semantics, 1–365 day expiry; backed by an IAM user | Easiest paste-one-thing path; same storage |
+| Long-term Bedrock API key (`credentials: bearer_token`) | One string with `AWS_BEARER_TOKEN_BEDROCK` semantics, 1–365 day expiry, backed by an IAM user. Stored as secret `bedrock_bearer_token`; the provider hands it to botocore's bearer signer directly and pins `signature_version: bearer`, never via the process environment | Easiest paste-one-thing path; same storage. Expiry shows as `AuthError` (`System › LLM` says to paste a new key) |
 | Ambient credentials | `AWS_PROFILE`/env/instance metadata, whatever botocore finds | Developers, and the Pi behind IAM Roles Anywhere |
 | IAM Roles Anywhere | X.509 cert on the Pi → temporary credentials | Documented hardening path, not automated in v0.1 |
 | IAM Identity Center (SSO) | interactive browser login | Not supported: headless device |
@@ -306,11 +306,11 @@ all rungs failed, or offline (no DNS/route at t0): within 1.0 s of t0 say "I can
                       fast path (§12) keeps working regardless
 ```
 
-Default `ladder: [fast, smart, fallback]` (§2.1); admins may append `openai_compat` rungs (a LAN GPU) in v0.2. boto3 runs with `retries={"max_attempts": 1}`; adaptive retry would hide the latency we must bound. `turns.stages_ms_json` records which rung answered so the Activity page can show "answered by smart after fast throttled".
+Default `ladder: [fast, smart, fallback]` (§2.1); admins may append `openai_compat` rungs (a LAN GPU) in v0.2. botocore runs with `retries={"total_max_attempts": 1, "mode": "standard"}`: one send, no retry. (`max_attempts` would be wrong: botocore counts it as *retries*, so `max_attempts: 1` means two sends.) Adaptive retry would hide the latency we must bound. A read timeout on a stale pooled connection is an `Unavailable` like any other; the ladder's next rung runs on a fresh connection because `warm()` (§3.7) has already replaced idle ones. `turns.stages_ms_json` records which rung answered so the Activity page can show "answered by smart after fast throttled".
 
 ### 3.7 Connection pre-warm on wake
 
-TLS setup from a Pi costs 100–300 ms. On `wake` the loop calls `warm()` on the first rung, which keeps one `botocore` client with `max_pool_connections=2` and keep-alive; if the pooled connection has been idle for more than 60 s it primes the pool with a TCP+TLS handshake (no tokens). The cache touch (§3.4) is separate. `warm()` returns in under 50 ms when the pool is hot and is never awaited on the critical path (fire-and-forget, 800 ms timeout).
+TLS setup from a Pi costs 100–300 ms. Each provider keeps one `botocore` client with `max_pool_connections=2` and TCP keep-alive. On `wake` the loop calls `warm()` on the first rung. If the provider has been idle for more than 60 s, `warm()` **closes the pooled connections and opens a fresh one** (TCP+TLS plus an unsigned `GET /` that Bedrock answers 404 without invoking a model, no tokens); the new connection stays in the pool for the real request. It does not try to keep idle connections alive: a home router can silently drop an idle NAT mapping, and a request on such a connection hangs until the read timeout (seen after a 6-minute gap in the 2026-11-02 preliminary run; the fresh reconnect took 571 ms on x86). The cache touch (§3.4) is separate. `warm()` returns at once when the pool is recent and is never awaited on the critical path (fire-and-forget). Its 800 ms timeout is **provisional** until G3 measures the reconnect on the Pi.
 
 ---
 
@@ -319,7 +319,7 @@ TLS setup from a Pi costs 100–300 ms. On `wake` the loop calls `warm()` on the
 Invariants fixed now so the v0.1 protocol does not foreclose it ([ROADMAP](ROADMAP.md) v0.2):
 
 - One adapter covers Ollama, llama.cpp server, vLLM, LM Studio, OpenRouter and OpenAI itself through `base_url`, optional `api_key`, `model`; `httpx` against `/v1/chat/completions` with `stream: true`, no vendor SDK.
-- Tool names with dots are mangled `.`→`__` on the way out and back; the same convention as the `/mcp` door if Converse ever needs it (§14).
+- Tool names use the §3.2 mapping (`.`→`__` out, `__`→`.` back), the same as every other door.
 - `caps.cache = False` (no emulation); `caps.streaming_tool_args`, `caps.parallel_tools` and `caps.effort` come from a probe at setup, and the conformance suite result is shown in the UI before the model can be selected.
 - Errors map 429→`Throttled`, 5xx/connection→`Unavailable`, 401/403→`AuthError`, 400→`BadRequest`.
 - The Pi itself is never a target; the recommended local target is a 7–14B instruct model with a tool-calling template on a LAN GPU.
@@ -334,7 +334,7 @@ The reasoning is owned by [ADR 0010](adr/0010-llm-provider-protocol-bedrock-defa
 
 ## 6. Conformance suite
 
-`core/beepboop/providers/llm/conformance/`, run with `uv run pytest core/beepboop/providers/llm/conformance -p <id>`. Every adapter passes all of it before it can be selected in the UI. Fixtures are recorded wire responses replayed through a fake transport, so CI needs no credentials; the nightly `--live` run hits real endpoints.
+The shared checks live in `core/beepboop/providers/llm/conformance/` (plain functions, no test framework, so `bench` can reuse them). Each provider wires them up in `core/tests/providers/llm/test_<id>_conformance.py`, marked `conformance`. Run one provider with `uv run pytest -m conformance core/tests/providers/llm -k <id>`; the live variants with `-m "conformance and live"`. Every adapter passes all of it before it can be selected in the UI. Fixtures are recorded wire responses replayed through a fake transport, so CI needs no credentials; the nightly live run (`-m live`) hits real endpoints.
 
 | Test | Asserts |
 |---|---|
@@ -346,7 +346,7 @@ The reasoning is owned by [ADR 0010](adr/0010-llm-provider-protocol-bedrock-defa
 | `test_tool_result_roundtrip` | a `ToolResultPart` with `is_error` and one with `untrusted` are serialised and the model's next answer references them |
 | `test_schema_fidelity` | a tool with `enum`, `integer` and `required` produces an `input` that validates; failures are logged as a quality finding, not a hard fail, for `openai_compat` |
 | `test_no_secrets_on_wire` | the recorded request body contains no `profile_id`, `turn_id`, PIN or token strings |
-| `test_ttft_budget` (`--live` only) | p50 TTFT to first `TextDelta` < 700 ms with a cached prefix (the M0 gate for Bedrock) |
+| `test_ttft_budget` (`-m live` only) | p50 TTFT to first `TextDelta` within the [ROADMAP G3](ROADMAP.md#m0-prove-the-pi) warm thresholds with a cached prefix (G3 is the only place the number lives) |
 
 `beepboop bench llm` wraps the live subset and prints TTFT p50/p95, cache hit rate and cost per turn for each configured alias.
 
@@ -415,7 +415,7 @@ The UI shows the measured TTFT cost of `effort` above `low`. Escalation from `fa
 
 ## 10. Cost tracking and budgets
 
-Every `Usage` becomes a cost using `providers/llm/pricing.yaml` (per model id, per MTok: input, output, cache read, cache write 5m/1h; shipped values dated and marked `verify:` against the Bedrock pricing page):
+Every `Usage` becomes a cost using `providers/llm/pricing.yaml` (per model id, per MTok: input, output, cache read, cache write 5m/1h; each row dated with `verified:`). **Rows with `verify: true` are list-price estimates** (from the research report or Anthropic's list price, not the Bedrock price list) until someone checks them against the Bedrock pricing page and drops the flag; costs computed from them are estimates. Shipped values (all three rows, including the Haiku 4.5 fallback, are `verify: true` as of M0):
 
 ```yaml
 global.anthropic.claude-haiku-5-5:  {in: 0.10, out: 0.50, cache_read: 0.01, cache_write_5m: 0.125, cache_write_1h: 0.20, verified: 2026-11-01}
@@ -504,17 +504,19 @@ It never learns new patterns from the LLM at runtime (that would be a second, im
 
 ## 13. M0 checklist (LLM part)
 
-- [ ] Bedrock adapter streams text and tool calls through the conformance fixtures.
-- [ ] TTFT p50 < 700 ms from a home connection with a cached prefix, Haiku 5.5, `effort: low`, thinking disabled; record p95 too.
-- [ ] `cacheReadInputTokens > 0` on the second request; record the minimum prefix size at which it first appears.
-- [ ] Pre-warm on wake measured: cold vs warm TTFT difference.
-- [ ] `additionalModelRequestFields` for thinking/effort verified against the Bedrock model cards for Haiku 5.5 and Sonnet 5.5; tool-name character set verified.
+"Preliminary" below means the 2026-11-02 x86 workstation run on the home connection ([results](../tools/bench/results/2026-11-02-workstation-g3-preliminary.json)); it answers protocol questions, not the Pi gate.
+
+- [x] Bedrock adapter streams text and tool calls through the conformance fixtures.
+- [ ] Warm TTFT p50 within the [G3](ROADMAP.md#m0-prove-the-pi) thresholds from a home connection with a cached prefix, Haiku 5.5, `effort: low`, thinking disabled; record p95 too. (Pi only; the numbers live in G3.)
+- [x] `cacheReadInputTokens > 0` on the second request (preliminary: a 2,388-token prefix). [ ] The minimum prefix size at which it first appears.
+- [ ] Pre-warm on wake measured: cold vs warm TTFT difference (the preliminary run's `warm()` samples are invalid; re-run).
+- [x] Tool-name character set: `[a-zA-Z0-9_-]`, `__` mapping accepted (preliminary). [x] Thinking disabled accepted on Haiku 5.5 (preliminary). [ ] Sonnet 5.5 `between_tools` and the explicit-effort question (§14 Q2).
 - [ ] Fast path: grammar + resolve + authorize p95 < 30 ms on the Pi with a 200-entity household.
 - [ ] Guardrail `sync` streaming latency measured once, so the opt-in toggle can show a number.
 
 ## 14. Open questions for reviewers
 
 1. **[v0.1 ruling] `pricing.yaml` prices for the 5.5 models** come from the research report, not the Bedrock price list (hence `verify:`). Who owns keeping it current?
-2. **[M0 measurement] Haiku 5.5 with thinking disabled vs adaptive at `low`:** faster, but with a quality risk (tool calls leaking into text). M0 A/Bs both on the eval set before fixing the default.
-3. **[M0 measurement] Tool names with dots on Converse.** If Bedrock rejects `home.turn_on`, the `__` mangling must be identical at the `/mcp` door ([MCP](MCP.md)), or external clients and the LLM see different names.
+2. **[M0 measurement] Haiku 5.5 at `low`:** thinking disabled (today's mapping, §3.2) vs adaptive thinking, and with or without an explicit `output_config.effort: "low"`. Disabled is faster but has a quality risk (tool calls leaking into text). M0 A/Bs them on the eval set before fixing the default.
+3. **Resolved (M0, 2026-11-02): tool names.** Converse rejects dots; `.`→`__` is mandatory and shared by every door (§3.2).
 4. **[v0.1 ruling] Fast-path coverage target (≥ 60 %)** is a guess; the first household eval set sets the real number.

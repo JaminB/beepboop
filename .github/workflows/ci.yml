@@ -69,8 +69,8 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-      - name: Install workspace incl. the bench-only phonemize extra
-        run: uv sync --all-packages --all-extras --frozen
+      - name: Install workspace from uv.lock (piper-phonemize comes with beepboop-audio)
+        run: uv sync --all-packages --frozen
       - name: Cache model weights by manifest hash
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:

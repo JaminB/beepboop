@@ -4,7 +4,7 @@
 
 **`[ spec phase ]`** — no product code yet. The documents in this repo are the specification engineers and Claude Code sessions build from. The first code milestone is [M0: prove the Pi](docs/ROADMAP.md).
 
-beepboop is an open-source (MIT) home voice assistant for a Raspberry Pi 4. It wakes on **"Hey beepboop"**, works out *who* is speaking, and acts on that person's profile: their Home Assistant devices, their calendar, their music, their lists. It is local-first, Home Assistant-powered, and exposes every integration as an MCP tool so the same capabilities reach the voice agent and any MCP client you choose.
+beepboop is an open-source (GPL-3.0-or-later) home voice assistant for a Raspberry Pi 4. It wakes on **"Hey beepboop"**, works out *who* is speaking, and acts on that person's profile: their Home Assistant devices, their calendar, their music, their lists. It is local-first, Home Assistant-powered, and exposes every integration as an MCP tool so the same capabilities reach the voice agent and any MCP client you choose.
 
 Related: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/ROADMAP.md](docs/ROADMAP.md) · [CLAUDE.md](CLAUDE.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [docs/GLOSSARY.md](docs/GLOSSARY.md)
 
@@ -27,7 +27,7 @@ Every open-source assistant we found treats the household as one anonymous user.
 | Safety for locks, alarms, purchases | Deterministic risk tiers enforced in middleware; a second factor for `critical` | Usually none | Voice PIN |
 | Home backbone | Home Assistant Core, pinned by digest, behind a policy-wrapped client | Varies | Proprietary |
 | Offline | Fast path handles common device commands with no internet | Varies | No |
-| Licence | MIT | Mostly Apache/MIT | Proprietary |
+| Licence | GPL-3.0-or-later | Mostly Apache/MIT | Proprietary |
 
 Voice ID in beepboop is **personalization, not authentication**. It picks the right profile and, above a strict threshold, unlocks that person's own data; it never on its own unlocks anything `critical`. See [docs/IDENTITY_AND_TRUST.md](docs/IDENTITY_AND_TRUST.md) and [SECURITY.md](SECURITY.md).
 
@@ -201,7 +201,9 @@ Full detail: [docs/DATA_AND_PRIVACY.md](docs/DATA_AND_PRIVACY.md).
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Speech models are downloaded at install time and carry their own licences, recorded in `models/LICENSES.md`; a module that bundles data records its licences in `modules/<id>/LICENSES.md`.
+Copyright (C) 2026 beepboop contributors.
+
+beepboop is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version (SPDX `GPL-3.0-or-later`). It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text and [ADR 0020](docs/adr/0020-gpl-3-and-espeak-phonemiser.md) for why the project moved from MIT. Speech models are downloaded at install time and carry their own licences, recorded in `models/LICENSES.md`; a module that bundles data records its licences in `modules/<id>/LICENSES.md`. Attributions required by CC BY data are in [NOTICE](NOTICE).
 
 beepboop is an independent project. "Home Assistant" is a trademark of the Open Home Foundation; beepboop works with Home Assistant and is not affiliated with it.
 

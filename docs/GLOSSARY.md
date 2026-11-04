@@ -118,7 +118,7 @@ Related: [Architecture](ARCHITECTURE.md) · [Voice pipeline](VOICE_PIPELINE.md) 
 
 ## K
 
-**KEK** — The key derived from the Pi's OTP device key that wraps the data key. [DATA §6.3](DATA_AND_PRIVACY.md)
+**KEK** — The key-encryption key that wraps the data key: in v0.1 a random key wrapped by an argon2id passphrase, optionally later derived from the Pi's OTP device key. [DATA §6.3](DATA_AND_PRIVACY.md)
 
 **Kind (module)** — `native`, `ha` or `mcp_proxy` (v0.3). [MODULES §4.2](MODULES.md)
 

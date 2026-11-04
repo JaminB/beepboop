@@ -60,7 +60,7 @@ Open `tools/bench/results/<date>-<host>-v2.json`:
 |---|---|
 | `status` | `PASS` |
 | `ha_version` | the pinned tag (for example `2026.10.3`) |
-| `sequence` | `/api/onboarding` → `/api/onboarding/users` → `/auth/token` → `core_config` → `analytics` → `integration` → WS `auth` → WS `auth/long_lived_access_token` → `/api/onboarding`, all with HTTP 200 |
+| `sequence` | `/api/onboarding` → `/api/onboarding/users` → `/auth/token` → `core_config` → `analytics` → `integration` → WS `auth` → WS `auth/long_lived_access_token` → `/auth/token` (`action=revoke`) → `/api/onboarding`, all with HTTP 200 |
 | `checks.onboarding` | all four steps done |
 | `checks.llat_auth` | the stored long-lived token opens a new WebSocket (`auth_ok`) |
 | `checks.llat_lifespan` | `exp - iat` = 3650 days |

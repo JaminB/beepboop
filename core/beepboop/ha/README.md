@@ -6,7 +6,7 @@ The only package that talks to Home Assistant or holds its token
 
 | Module | What |
 |---|---|
-| `onboarding.py` | Headless onboarding ([§3](../../../docs/HOME_ASSISTANT.md#3-headless-onboarding)). `HAOnboarding(session, store, config).run()` goes through `/api/onboarding` → `users` → `/auth/token` → `core_config` → `analytics` → `integration` → WS `auth/long_lived_access_token`, then stores the owner password and the long-lived token in the secrets envelope. It is idempotent: a stored token means "already onboarded". An HA that someone else onboarded returns `needs_login`. |
+| `onboarding.py` | Headless onboarding ([§3](../../../docs/HOME_ASSISTANT.md#3-headless-onboarding)). `HAOnboarding(session, store, config).run()` goes through `/api/onboarding` → `users` → `/auth/token` → `core_config` → `analytics` → `integration` → WS `auth/long_lived_access_token` → `/auth/token` `action=revoke` (the onboarding refresh token), then checks every step is done. The owner password and the long-lived token go into the secrets envelope. HA's canonical URLs are not set here; they live in the managed `configuration.yaml` block. It is idempotent: a stored token means "already onboarded". An HA that someone else onboarded returns `needs_login`. |
 | `ws.py` | A minimal authenticated WebSocket session (`auth` handshake, then `call(type, **payload)`). The full `HAConnection` with reconnects, subscriptions and the state cache (§4–§6) is v0.1. |
 
 Tokens travel as `pydantic.SecretStr`. Nothing here logs a token, auth code or password,

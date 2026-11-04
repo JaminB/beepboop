@@ -3,6 +3,10 @@
 The audio container image stays lean, so this CLI uses ``argparse`` rather
 than Typer. CLAUDE.md §9 lists its commands; ``serve [--fake-mic <wav>]`` is
 added together with the service loop.
+
+Logging goes through the shared redacting setup in ``beepboop_protocol.log``
+(CLAUDE.md hard rule 5, ADR 0019): the audio service handles spoken PINs, so it
+must redact exactly as core does.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ import sys
 from collections.abc import Sequence
 
 from beepboop_audio import __version__
+from beepboop_protocol.log import configure_logging
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Console-script entry point; returns the process exit code."""
     args = build_parser().parse_args(argv)
+    configure_logging()
     if args.command == "version":
         sys.stdout.write(f"beepboop-audio {__version__}\n")
         return 0

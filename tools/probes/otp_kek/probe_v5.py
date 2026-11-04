@@ -1,8 +1,10 @@
-"""M0 item V5: the Pi OTP device key gives a stable KEK from the core container.
+"""M0 item V5: the passphrase-wrapped KEK works on a Pi; the OTP key is optional.
 
-ROADMAP V5: "The Pi OTP device key is readable from the core container via
-``/dev/vcio`` and produces a stable KEK across reboots; the passphrase-wrapped
-fallback works on a board without it."
+ROADMAP V5 (after owner decision D3, 2026-11-03): the argon2id passphrase-wrapped
+KEK, the v0.1 default, works on a Pi board without an OTP key. The OTP part
+(the key is readable from the core container via ``/dev/vcio`` and produces a
+stable KEK across reboots) is an optional later upgrade: it is still recorded
+when run, but it does not decide V5's status.
 
 Subcommands (all append one observation to
 ``tools/bench/results/<date>-<host>-v5.json`` and recompute the verdict):
@@ -18,8 +20,8 @@ Subcommands (all append one observation to
 ``report``    recompute and print the verdict from the recorded observations.
 
 The OTP key and the KEK are never printed or written; only a one-way
-fingerprint is. Nothing here writes OTP (that is irreversible and the
-installer's job). Off a Pi every record is labelled
+fingerprint is. Nothing here writes OTP (that is irreversible; the installer
+does not do it either, D3). Off a Pi every record is labelled
 "synthetic / x86 / not a gate result".
 """
 
@@ -244,10 +246,9 @@ def fallback_verdict(observations: list[JsonObject]) -> tuple[Status, str]:
     return "PASS", str(latest["detail"])
 
 
-def overall(statuses: list[Status]) -> Status:
-    if "FAIL" in statuses:
-        return "FAIL"
-    return "PASS" if all(s == "PASS" for s in statuses) else "INCOMPLETE"
+def overall(fallback: Status) -> Status:
+    """V5's status is the passphrase path's (D3); the OTP verdict is informational."""
+    return fallback
 
 
 # ---------------------------------------------------------------- record --
@@ -269,7 +270,7 @@ def update_record(
         else {
             "schema": SCHEMA,
             "probe": "V5",
-            "item": "OTP device key -> stable KEK from the core container; passphrase fallback",
+            "item": "passphrase-wrapped KEK (v0.1 default, D3); optional OTP key -> stable KEK",
             "host": host,
             "observations": [],
         }
@@ -279,9 +280,9 @@ def update_record(
         observations.append({"recorded_at": now.isoformat(), "board_model": model, **observation})
     otp_status, otp_note = otp_verdict(observations)
     fb_status, fb_note = fallback_verdict(observations)
-    record["otp"] = {"status": otp_status, "note": otp_note}
+    record["otp"] = {"status": otp_status, "note": otp_note, "optional": True}
     record["fallback"] = {"status": fb_status, "note": fb_note}
-    record["status"] = overall([otp_status, fb_status])
+    record["status"] = overall(fb_status)
     models = {o.get("board_model") for o in observations}
     if any(not (isinstance(m, str) and m.startswith("Raspberry Pi")) for m in models):
         record["label"] = SYNTHETIC_LABEL

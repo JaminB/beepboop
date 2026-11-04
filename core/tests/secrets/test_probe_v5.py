@@ -84,7 +84,16 @@ def test_changed_fingerprint_fails(
     _boot(monkeypatch, v5, "boot-b", container=True)
     record = _record(v5, path, v5.observe_read(lambda: bytes(range(2, 34)), SALT, cross_check=None))
     assert record["otp"]["status"] == "FAIL"
-    assert record["status"] == "FAIL"
+    # D3: OTP is optional, so its failure is recorded but does not decide V5.
+    assert record["otp"]["optional"] is True
+    assert record["status"] == "INCOMPLETE"
+
+
+def test_passphrase_path_alone_passes_v5(v5: Any, tmp_path: Path) -> None:
+    record = _record(v5, tmp_path / "v5.json", v5.observe_fallback(_no_vcio, CHEAP))
+    assert record["otp"]["status"] == "INCOMPLETE"
+    assert record["fallback"]["status"] == "PASS"
+    assert record["status"] == "PASS"
 
 
 def test_changed_salt_is_incomplete_not_fail(

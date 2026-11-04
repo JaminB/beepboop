@@ -25,9 +25,11 @@ Related: [CLAUDE.md](../../CLAUDE.md) · [CONTRIBUTING.md](../../CONTRIBUTING.md
 | [0013](0013-https-tiers.md) | HTTPS in two tiers: local CA by default, real domain unlocks passkeys and external MCP | Accepted | [WEB_UI.md](../WEB_UI.md), [OPERATIONS.md](../OPERATIONS.md) |
 | [0014](0014-second-factor-web-confirm.md) | The v0.1 second factor is web UI confirm without push, with an optional spoken PIN | Accepted | [IDENTITY_AND_TRUST.md](../IDENTITY_AND_TRUST.md) |
 | [0015](0015-latency-contract-and-fast-path.md) | The latency contract and the deterministic fast path; no local LLM | Accepted | [VOICE_PIPELINE.md](../VOICE_PIPELINE.md), [ROADMAP.md](../ROADMAP.md) |
-| [0016](0016-docker-compose-mit.md) | Four Docker Compose containers on Pi OS Lite; MIT license; models downloaded, not vendored | Accepted | [OPERATIONS.md](../OPERATIONS.md) |
+| [0016](0016-docker-compose-mit.md) | Four Docker Compose containers on Pi OS Lite; MIT license; models downloaded, not vendored | Accepted; licence clause superseded by 0020 | [OPERATIONS.md](../OPERATIONS.md) |
 | [0017](0017-phased-roadmap.md) | A gated roadmap: M0 proves the Pi before v0.1 begins | Accepted | [ROADMAP.md](../ROADMAP.md) |
 | [0018](0018-no-audio-retention.md) | No audio is ever persisted; a speaker-model change means re-enrollment | Accepted | [DATA_AND_PRIVACY.md](../DATA_AND_PRIVACY.md), [VOICE_PIPELINE.md](../VOICE_PIPELINE.md) |
+| [0019](0019-shared-protocol-package-and-negotiated-embedding-dim.md) | One light protocol package shared by both services; the embedding length is negotiated in `hello` | Accepted | [ARCHITECTURE.md](../ARCHITECTURE.md) |
+| [0020](0020-gpl-3-and-espeak-phonemiser.md) | GPL-3.0-or-later; espeak-ng phonemiser in the TTS path; lessac-derived voices accepted (D1) | Accepted | [OPERATIONS.md §13](../OPERATIONS.md#13-model-and-licensing-hygiene), [VOICE_PIPELINE.md](../VOICE_PIPELINE.md) |
 
 ## Writing an ADR
 

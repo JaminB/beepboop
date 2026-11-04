@@ -8,7 +8,7 @@ summary: "Track the user's own parcels and say when they arrive."   # <= 20 word
 scope: profile                 # profile: each person connects their own carrier account and tracking numbers
 category: productivity         # home | media | productivity | information | communication | persona | system
 locales: [en]
-license: MIT
+license: GPL-3.0-or-later
 keywords: [package, parcel, delivery, shipment, tracking, courier, order, arriving, shipped]   # <= 12; BM25 index
 
 # No `requires.ha` ⇒ this module is native (docs/MODULES.md §4.2). Native only because carriers have no HA per-person model.

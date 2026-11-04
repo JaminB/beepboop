@@ -128,7 +128,10 @@ G2 = Gate(
         ),
     ),
     preconditions=(Check("2 threads measured", "sections.stt.threads_2.threads", "==", 2),),
-    note="ROADMAP G2: RTF < 0.6 and final tail <= 100 ms after t_eos (statistic rule applied).",
+    note=(
+        "ROADMAP G2: p50 RTF < 0.6 and p50 final tail (t_eos flush -> final) <= 100 ms, "
+        "p90 <= 1.3x each."
+    ),
 )
 
 G3 = Gate(
@@ -198,9 +201,8 @@ G4 = Gate(
         Check("music profile sampled >= 24 h", "sections.ram.music.duration_s", ">=", 86400.0, "s"),
     ),
     note=(
-        "ROADMAP G4: peak used < 3.2 GB (read as GiB) on a 4 GB Pi, zram used < 25 %, zero OOM "
-        "kills "
-        "of any container over 24 h, default profile and again with music on."
+        "ROADMAP G4: peak used < 3.2 GiB on a 4 GB (nominal) Pi, zram used < 25 %, zero OOM "
+        "kills of any container over 24 h, default profile and again with music on."
     ),
 )
 

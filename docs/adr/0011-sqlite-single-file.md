@@ -21,6 +21,10 @@ One file, `beepboop.sqlite`, `journal_mode=WAL`, one async writer task that batc
 - Lose the recovery key and existing backups cannot be restored elsewhere; the UI insists the phrase is written down.
 - Single writer means modules write through `kv` via the writer, never with their own connections or tables.
 
+> **Amended 2026-11-03 (cipher and recovery wording).** "libsodium secretbox or AES-GCM" above is loose: the cipher is **XChaCha20-Poly1305**, libsodium's AEAD (`crypto_aead_xchacha20poly1305_ietf` via PyNaCl), with the row-binding AAD in [DATA_AND_PRIVACY §6.3](../DATA_AND_PRIVACY.md#63-envelope-encryption); the Pi 4 has no AES instructions. "A recovery key … wraps a second copy of the KEK" is also superseded by DATA_AND_PRIVACY §11: the backup bundle carries the DEKs, encrypted to the `age` recovery key. The M0 implementation is `core/beepboop/secrets/`.
+
+> **Amended 2026-11-03 (owner decision D3).** The KEK order is reversed for v0.1: the default on every board, Pi included, is the argon2id passphrase-wrapped KEK, with the passphrase in a root-only host file mounted into core for unattended boot. The installer does not program the OTP key; the OTP-derived KEK is an optional later upgrade. Because the passphrase file lives on the same SSD, SSD theft is protected only with LUKS on; the threat model is in [DATA_AND_PRIVACY §6.3](../DATA_AND_PRIVACY.md#63-envelope-encryption).
+
 > **Amended 2026-11-01.** The Decision originally listed the tables inline (including `timers`, `lists` and "retained enrollment audio"). The review moved timers and lists into `kv` and [ADR 0018](0018-no-audio-retention.md) removed every audio-retention path; DATA_AND_PRIVACY §6 is the only table list.
 
 ## Alternatives considered

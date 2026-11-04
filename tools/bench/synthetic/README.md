@@ -6,7 +6,7 @@ claims**: the corpus is flagged `synthetic: true`, the result file is labelled
 `synthetic / x86 / not a gate result`, and `--gates` is never passed (the CLI would refuse).
 
 ```bash
-uv sync --all-packages --all-extras        # the phonemize extra is needed for TTS
+uv sync --all-packages                     # includes piper-phonemize (an audio dependency) for TTS
 uv run python tools/bench/synthetic/run.py --small --duration 20
 ```
 

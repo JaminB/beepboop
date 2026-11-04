@@ -174,8 +174,14 @@ def test_restart_and_logging(compose: dict[str, Any]) -> None:
 
 
 def test_volumes_live_under_srv_beepboop(compose: dict[str, Any]) -> None:
-    allowed_outside = {"/etc/localtime", "/run/dbus"}
+    # The KEK passphrase file stays outside the data root so it is never in a backup
+    # (DATA_AND_PRIVACY §6.3, D3); only core mounts it, read-only.
+    allowed_outside = {"/etc/localtime", "/run/dbus", "/etc/beepboop/kek.passphrase"}
     for name, svc in _services(compose).items():
+        for vol in svc.get("volumes", []):
+            if str(vol).startswith("/etc/beepboop/"):
+                assert name == "core", (name, vol)
+                assert str(vol).endswith(":ro"), (name, vol)
         for vol in svc.get("volumes", []):
             source = str(vol).split(":", 1)[0]
             assert "docker.sock" not in str(vol), f"{name}: no container mounts docker.sock"

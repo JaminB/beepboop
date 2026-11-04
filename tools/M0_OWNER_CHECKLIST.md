@@ -30,7 +30,7 @@ sudo apt install -y nftables zram-tools chrony fake-hwclock alsa-utils git   # +
 sudo sed -i '$ s/$/ cgroup_enable=memory cgroup_memory=1 swapaccount=1/' /boot/firmware/cmdline.txt && sudo reboot
 curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone <this repo> ~/beepboop && cd ~/beepboop
-uv sync --all-packages --all-extras --frozen
+uv sync --all-packages --frozen
 uv run python -m beepboop_bench.models fetch        # pinned weights, sha256-verified
 ```
 
@@ -71,16 +71,15 @@ uv run python tools/probes/ha_onboarding/record_v2.py --data-dir ~/v2-data
 
 Commit `results/<date>-<host>-v2.json`, write the sequence into HOME_ASSISTANT, `rm -r ~/v2-data`.
 
-## 5. V5: OTP key-encryption key
+## 5. V5: passphrase-wrapped key-encryption key
 
-[tools/probes/otp_kek/README.md](probes/otp_kek/README.md). Run the fallback **first**.
-Programming the OTP key is **irreversible** and your decision (D3). Do not set
-`lock_device_private_key=1`.
+[tools/probes/otp_kek/README.md](probes/otp_kek/README.md). Under D3 (2026-11-03) the
+passphrase-wrapped KEK is the v0.1 default and alone decides V5. **Do not program the OTP
+key**; that is an optional, irreversible later upgrade (README steps 2–6).
 
 ```bash
 uv run python tools/probes/otp_kek/probe_v5.py fallback
-uv run python tools/probes/otp_kek/probe_v5.py read --data-dir ~/v5-data --cross-check
-sudo reboot   # then read again, on the host and inside a container (README step 5)
+uv run python tools/probes/otp_kek/probe_v5.py read     # expect otp_programmed: false
 uv run python tools/probes/otp_kek/probe_v5.py report
 ```
 
@@ -88,7 +87,8 @@ Commit `results/<date>-<host>-v5.json`; record it in DATA_AND_PRIVACY.
 
 ## 6. Train the stock wake word (laptop with a GPU, hours, ~100 GB downloads)
 
-[tools/train_wakeword/README.md](train_wakeword/README.md) §6. Decide D1 (lessac licence) first.
+[tools/train_wakeword/README.md](train_wakeword/README.md) §6. The lessac-derived generator
+voices are accepted (D1), so the default profile applies.
 
 ```bash
 cd tools/train_wakeword && make deps check
@@ -187,14 +187,25 @@ sh tools/probes/thermal_g7/run_g7.sh -d 1200 -- beepboop bench thermal --duratio
    and [DATA_AND_PRIVACY](../docs/DATA_AND_PRIVACY.md), with HA version, XVF3800 firmware version and date.
 3. For every failing gate, open an ADR choosing the ROADMAP fallback before any v0.1 work.
 
-## Decisions only you can make
+## Decisions
 
-- **D1** Piper voices fine-tuned from `lessac` (Blizzard 2013, research-only provenance) feed both
-  the wake-word generator and the default TTS voice: accept, or use the strict profile
-  (`generator_share: 0`) and pick another TTS voice. See `tools/train_wakeword/README.md` §7.2.
+Decided 2026-11-03:
+
+- **Licence**: the project is GPL-3.0-or-later ([ADR 0020](../docs/adr/0020-gpl-3-and-espeak-phonemiser.md));
+  piper-phonemize / espeak-ng are normal dependencies of the Piper TTS path.
+- **D1 accepted**: the `lessac`-derived Piper voices (Blizzard 2013, research-only provenance)
+  feed the wake-word generator and the default TTS voice; the provenance is recorded in
+  `models/LICENSES.md` and `tools/train_wakeword/README.md` §7.2. The strict profile stays an option.
+- **D3 deferred**: the Pi OTP key is not programmed; the argon2id passphrase-wrapped KEK is the
+  v0.1 default (step 5). OTP is an optional later upgrade.
+- **D4 resolved**: every spec error the builders found is fixed in docs, code and tests; see
+  "Resolved spec findings" in [ROADMAP M0](../docs/ROADMAP.md#m0-prove-the-pi).
+
+Still yours:
+
 - **D2** Which AWS profile Bedrock runs under. The preliminary probe used the only configured
   profile on the workstation, which may belong to an unrelated account; use a dedicated one.
-- **D3** Whether to program the Pi's OTP private key (irreversible) or ship the passphrase fallback.
-- **D4** Spec fixes the builders found (embedding dimension 512 vs 192, TTS phonemiser, firewall
-  text in HOME_ASSISTANT §2.1, etc.); listed in [ROADMAP M0](../docs/ROADMAP.md#m0-prove-the-pi).
-- Verify the `verify`-marked rows in `core/beepboop/providers/llm/pricing.yaml`.
+- Confirm the `speak` unknown-clip-key rule (error earcon + `speak.done` reason `error`,
+  [ARCHITECTURE §4.2](../docs/ARCHITECTURE.md#42-event-catalog)).
+- Verify the `verify`-marked rows in `core/beepboop/providers/llm/pricing.yaml` (list-price
+  estimates, [LLM_PROVIDERS §10](../docs/LLM_PROVIDERS.md)).

@@ -11,7 +11,13 @@ import structlog
 from hypothesis import given
 from hypothesis import strategies as st
 
-from beepboop.log import REDACTED, configure_logging, get_logger, is_sensitive_key, redact_secrets
+from beepboop_protocol.log import (
+    REDACTED,
+    configure_logging,
+    get_logger,
+    is_sensitive_key,
+    redact_secrets,
+)
 
 
 @pytest.fixture(autouse=True)

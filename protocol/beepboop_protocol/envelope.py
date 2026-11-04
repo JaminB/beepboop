@@ -30,13 +30,20 @@ import secrets
 import time
 from typing import Annotated, ClassVar, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 #: Protocol major version sent in ``hello``. A mismatch refuses the connection.
-PROTOCOL_MAJOR = 1
+#: 2 since the embedding length became per-connection (ADR 0019); 1 was never released.
+PROTOCOL_MAJOR = 2
 
-#: Speaker embedding length (ARCHITECTURE §3: "Embeddings (192 floats)").
-EMBEDDING_DIM = 192
+#: Upper bound on any embedding length (ARCHITECTURE §4.4). The actual length is
+#: per connection: audio announces it in ``hello.speaker.dim`` and
+#: :class:`~.connection.EventChannel` checks every embedding against it.
+MAX_EMBEDDING_DIM = 4096
+
+#: The v0.1 speaker model's embedding length (CAM++, VOICE_PIPELINE §8.1). Only
+#: examples and tests use it; nothing on the wire assumes it.
+DEFAULT_EMBEDDING_DIM = 512
 
 #: The fixed id of the built-in guest profile (ARCHITECTURE §4.2, IDENTITY_AND_TRUST §2).
 GUEST_PROFILE_ID = "guest"
@@ -60,16 +67,9 @@ def new_ulid(now_ms: int | None = None) -> str:
     return "".join(_ULID_ALPHABET[(value >> shift) & 0x1F] for shift in range(125, -1, -5))
 
 
-def _check_profile_id(value: str) -> str:
-    # Guest is always the exact string "guest", never "GUEST" (ARCHITECTURE §4.2).
-    if value.casefold() == GUEST_PROFILE_ID and value != GUEST_PROFILE_ID:
-        raise ValueError(f'guest must be encoded as profile_id "{GUEST_PROFILE_ID}"')
-    return value
-
-
-#: A profile id: a ULID or the literal ``"guest"``. Non-ULID ids are accepted
-#: because ARCHITECTURE §4.3 uses readable ids (``"alex"``) in its example.
-ProfileId = Annotated[str, Field(min_length=1, max_length=64), AfterValidator(_check_profile_id)]
+#: A profile id: a ULID (``profiles.id``) or exactly ``"guest"``, never ``"GUEST"``
+#: (ARCHITECTURE §4.2, §4.4).
+ProfileId = Annotated[str, Field(pattern=rf"^(?:{GUEST_PROFILE_ID}|{ULID_PATTERN[1:-1]})$")]
 
 #: A non-empty short identifier (utterance ids, session ids, provider names).
 Name = Annotated[str, Field(min_length=1, max_length=128)]
@@ -84,9 +84,10 @@ Millis = Annotated[int, Field(ge=0)]
 Locale = Annotated[str, Field(min_length=2, max_length=35, pattern=r"^[A-Za-z0-9-]+$")]
 
 
-#: One speaker embedding: exactly ``EMBEDDING_DIM`` finite floats. Numbers, not
-#: audio, so it may cross the socket in both directions (ARCHITECTURE §3).
-Embedding = Annotated[list[float], Field(min_length=EMBEDDING_DIM, max_length=EMBEDDING_DIM)]
+#: One speaker embedding: finite floats, as many as the connection's
+#: ``hello.speaker.dim`` (checked per connection, not here). Numbers, not audio,
+#: so it may cross the socket in both directions (ARCHITECTURE §3).
+Embedding = Annotated[list[float], Field(min_length=1, max_length=MAX_EMBEDDING_DIM)]
 
 
 class WireModel(BaseModel):
@@ -124,6 +125,13 @@ class EventBase(WireModel):
     @classmethod
     def _ms_precision(cls, value: float) -> float:
         return round(value, 3)
+
+    def embedding_lengths(self) -> tuple[int, ...]:
+        """Lengths of every speaker embedding this event carries (none by default).
+
+        The channel compares them with the negotiated ``hello.speaker.dim``.
+        """
+        return ()
 
     @model_validator(mode="after")
     def _check_turn_scope(self) -> EventBase:

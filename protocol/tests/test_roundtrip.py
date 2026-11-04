@@ -13,10 +13,10 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from beepboop_audio.events import (
+from beepboop_protocol import (
     AUDIO_EVENT_CLASSES,
     CORE_EVENT_CLASSES,
-    EMBEDDING_DIM,
+    MAX_EMBEDDING_DIM,
     PROTOCOL_MAJOR,
     AudioHelloData,
     AudioHelloEvent,
@@ -77,7 +77,7 @@ from beepboop_audio.events import (
     encode,
     new_ulid,
 )
-from beepboop_audio.events.examples import EXAMPLE_PIN_HASH
+from beepboop_protocol.examples import EXAMPLE_PIN_HASH
 
 # ------------------------------------------------------------- primitives --
 
@@ -91,10 +91,10 @@ locales = st.sampled_from(["en-US", "en-GB", "de-DE", "fr"])
 turn_ids = st.integers(min_value=0, max_value=2**48 - 1).map(lambda ms: new_ulid(now_ms=ms))
 timestamps = st.integers(min_value=0, max_value=4_000_000_000_000).map(lambda ms: ms / 1000)
 seqs = st.integers(min_value=0, max_value=2**53)
-profile_ids = st.one_of(st.just("guest"), st.from_regex(r"[a-z0-9]{1,26}", fullmatch=True)).filter(
-    lambda p: p.casefold() != "guest" or p == "guest"
-)
-embeddings = st.lists(finite, min_size=EMBEDDING_DIM, max_size=EMBEDDING_DIM)
+profile_ids = st.one_of(st.just("guest"), turn_ids)
+# One fixed length, so every centroid in a drawn profiles.sync agrees; the
+# per-connection length check is exercised in test_channel.py.
+embeddings = st.lists(finite, min_size=8, max_size=8)
 voices = st.builds(VoiceSpec, voice_id=names, rate=st.floats(min_value=0.1, max_value=4.0))
 
 
@@ -119,7 +119,9 @@ audio_hello = st.builds(
     wake=st.builds(WakeInfo, provider=names, models=st.lists(names, max_size=3)),
     stt=st.builds(SttInfo, provider=names, locale=locales),
     tts=st.builds(TtsInfo, provider=names, voices=st.lists(names, max_size=3)),
-    speaker=st.builds(SpeakerInfo, model_id=names, model_sha=names, dim=st.just(EMBEDDING_DIM)),
+    speaker=st.builds(
+        SpeakerInfo, model_id=names, model_sha=names, dim=st.integers(1, MAX_EMBEDDING_DIM)
+    ),
     aec_verified=st.booleans(),
 )
 wake = st.builds(
@@ -233,6 +235,7 @@ AUDIO_STRATEGIES: dict[type[EventBase], st.SearchStrategy[Any]] = {
             stt_rtf=st.floats(min_value=0.0, max_value=100.0),
             playback_queue_ms=millis,
             models_loaded=st.booleans(),
+            aec_verified=st.booleans(),
         ),
         "forbidden",
     ),

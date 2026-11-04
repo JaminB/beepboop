@@ -26,7 +26,7 @@ version = "0.1.0"
 description = "Reproducible training pipeline for the stock 'Hey beepboop' microWakeWord model"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-license = "MIT"
+license = "GPL-3.0-or-later"
 dependencies = [
     # --- trainer (Apache-2.0) -------------------------------------------------
     "microwakeword @ git+https://github.com/OHF-Voice/micro-wake-word@4665173cd35f1cff9a61e06fc427f124766c488e",
@@ -40,8 +40,10 @@ dependencies = [
     "datasets>=3.0",
     "webrtcvad-wheels>=2.0.14",
     # --- sample generator deps (piper-sample-generator 3.2.0's own pins) ----------
-    # piper-tts is GPL-3.0-or-later: it runs only in this offline tool, never in a
-    # beepboop process (ADR 0009). The generated WAVs are not GPL.
+    # piper-tts is GPL-3.0-or-later, the same licence as beepboop (ADR 0020). It runs
+    # only in this offline tool because the product's TTS runtime is sherpa-onnx
+    # (ADR 0009: one runtime to pin); the licence is not the reason. The generated
+    # WAVs are training data, not a derivative of piper-tts.
     "piper-tts==1.3.0",
     "audiomentations==0.33.0",
     "torch>=2,<3",

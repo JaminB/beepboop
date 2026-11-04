@@ -40,7 +40,9 @@ services:
       BB_AUDIO_SOCKET: /run/beepboop/audio.sock
       BB_HA_URL: ws://127.0.0.1:8123/api/websocket
       BB_PUBLIC_URL: https://${BB_HOST:-beepboop.local}
+      BB_KEK_PASSPHRASE_FILE: /run/secrets/kek_passphrase            # v0.1 KEK source (DATA_AND_PRIVACY §6.3, D3)
     volumes:
+      - /etc/beepboop/kek.passphrase:/run/secrets/kek_passphrase:ro   # host-only, outside the data root; written by install.sh
       - /srv/beepboop/config/beepboop.yaml:/config/beepboop.yaml:ro   # household config file
       - /srv/beepboop/core:/data                                      # beepboop.db + WAL
       - /srv/beepboop/backups:/backups                                # VACUUM INTO target (OPERATIONS §10)
@@ -49,7 +51,7 @@ services:
       - /srv/beepboop/models:/models:ro                               # manifest + LICENSES only; core never loads weights
       - /srv/beepboop/run:/hostrun:ro                                 # host.json from beepboop-host.timer (OPERATIONS §5)
       - bb-run:/run/beepboop
-    devices: ["/dev/vcio:/dev/vcio"]             # Pi OTP device key -> KEK (DATA_AND_PRIVACY §6.3)
+    devices: ["/dev/vcio:/dev/vcio"]             # only for the optional OTP KEK upgrade; v0.1 uses the passphrase file (DATA_AND_PRIVACY §6.3)
     group_add: ["video"]
     mem_limit: ${BB_MEM_CORE:-768m}              # 1g on 8 GB
     cpuset: "0-1"

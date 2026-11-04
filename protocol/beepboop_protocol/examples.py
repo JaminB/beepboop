@@ -7,7 +7,7 @@ not measurements.
 
 from __future__ import annotations
 
-from beepboop_audio.events.audio_events import (
+from beepboop_protocol.audio_events import (
     AudioEvent,
     AudioHelloData,
     AudioHelloEvent,
@@ -41,7 +41,7 @@ from beepboop_audio.events.audio_events import (
     WakeEvent,
     WakeInfo,
 )
-from beepboop_audio.events.core_events import (
+from beepboop_protocol.core_events import (
     Calibration,
     CancelData,
     CancelEvent,
@@ -66,7 +66,7 @@ from beepboop_audio.events.core_events import (
     TierThresholds,
     VoiceSpec,
 )
-from beepboop_audio.events.envelope import EMBEDDING_DIM, PROTOCOL_MAJOR
+from beepboop_protocol.envelope import DEFAULT_EMBEDDING_DIM, PROTOCOL_MAJOR
 
 #: A fixed, valid ULID for examples.
 EXAMPLE_TURN_ID = "01JBX6Q8Y4H3K9ZR2M7V5T8WDA"
@@ -74,7 +74,11 @@ EXAMPLE_TURN_ID = "01JBX6Q8Y4H3K9ZR2M7V5T8WDA"
 EXAMPLE_PIN_HASH = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHQ$aGFzaGhhc2hoYXNoaGFzaA"
 
 _VOICE = VoiceSpec(voice_id="en_US-lessac-low", rate=1.0)
-_EMBEDDING = [0.01 * (i % 7) for i in range(EMBEDDING_DIM)]
+#: Example profile ids (ULIDs; ARCHITECTURE §4.3 abbreviates them to "alex" and "sam").
+EXAMPLE_PROFILE_ALEX = "01JBW2K3M4N5P6Q7R8S9T0VWXY"
+EXAMPLE_PROFILE_SAM = "01JBW2K3M4N5P6Q7R8S9T0VWXZ"
+
+_EMBEDDING = [0.01 * (i % 7) for i in range(DEFAULT_EMBEDDING_DIM)]
 
 
 def example_audio_hello() -> AudioHelloEvent:
@@ -85,7 +89,7 @@ def example_audio_hello() -> AudioHelloEvent:
             wake=WakeInfo(provider="microwakeword", models=["hey_beepboop"]),
             stt=SttInfo(provider="sherpa-zipformer", locale="en-US"),
             tts=TtsInfo(provider="sherpa-piper", voices=["en_US-lessac-low"]),
-            speaker=SpeakerInfo(model_id="campp-en", model_sha="0" * 64, dim=EMBEDDING_DIM),
+            speaker=SpeakerInfo(model_id="campp-en", model_sha="0" * 64, dim=DEFAULT_EMBEDDING_DIM),
             aec_verified=False,
         )
     )
@@ -112,19 +116,21 @@ def example_audio_events(turn_id: str = EXAMPLE_TURN_ID) -> list[AudioEvent]:
         ),
         SpeakerProvisionalEvent(
             turn_id=turn_id,
-            data=SpeakerProvisionalData(profile_id="alex", score=0.74, margin=0.19, audio_ms=1040),
+            data=SpeakerProvisionalData(
+                profile_id=EXAMPLE_PROFILE_ALEX, score=0.74, margin=0.19, audio_ms=1040
+            ),
         ),
         SpeakerFinalEvent(
             turn_id=turn_id,
             data=SpeakerFinalData(
-                profile_id="alex",
+                profile_id=EXAMPLE_PROFILE_ALEX,
                 score=0.83,
                 margin=0.27,
                 anchor=True,
                 audio_ms=2990,
                 candidates=[
-                    SpeakerCandidate(profile_id="alex", score=0.83),
-                    SpeakerCandidate(profile_id="sam", score=0.56),
+                    SpeakerCandidate(profile_id=EXAMPLE_PROFILE_ALEX, score=0.83),
+                    SpeakerCandidate(profile_id=EXAMPLE_PROFILE_SAM, score=0.56),
                 ],
             ),
         ),
@@ -173,6 +179,7 @@ def example_audio_events(turn_id: str = EXAMPLE_TURN_ID) -> list[AudioEvent]:
                 stt_rtf=0.31,
                 playback_queue_ms=0,
                 models_loaded=True,
+                aec_verified=False,
             )
         ),
         ErrorEvent(data=ErrorData(code="alsa_xrun", message="capture overrun", fatal=False)),
@@ -206,7 +213,7 @@ def example_core_events(turn_id: str = EXAMPLE_TURN_ID) -> list[CoreEvent]:
             data=ProfilesSyncData(
                 profiles=[
                     ProfileVoiceprint(
-                        profile_id="alex",
+                        profile_id=EXAMPLE_PROFILE_ALEX,
                         centroids=[_EMBEDDING, _EMBEDDING],
                         calib=Calibration(
                             tau=TierThresholds(act=0.55, personal=0.7),
@@ -223,7 +230,10 @@ def example_core_events(turn_id: str = EXAMPLE_TURN_ID) -> list[CoreEvent]:
         ),
         EnrollStartEvent(
             data=EnrollStartData(
-                session_id="enr1", profile_id="alex", mode="wake", prompts=["Hey beepboop"]
+                session_id="enr1",
+                profile_id=EXAMPLE_PROFILE_ALEX,
+                mode="wake",
+                prompts=["Hey beepboop"],
             )
         ),
         EnrollStopEvent(data=EnrollStopData(session_id="enr1")),
@@ -232,6 +242,8 @@ def example_core_events(turn_id: str = EXAMPLE_TURN_ID) -> list[CoreEvent]:
 
 __all__ = [
     "EXAMPLE_PIN_HASH",
+    "EXAMPLE_PROFILE_ALEX",
+    "EXAMPLE_PROFILE_SAM",
     "EXAMPLE_TURN_ID",
     "example_audio_events",
     "example_audio_hello",

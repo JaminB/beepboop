@@ -12,9 +12,9 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
-from beepboop_audio.events.audio_events import AudioEvent
-from beepboop_audio.events.core_events import CoreEvent
-from beepboop_audio.events.envelope import PROTOCOL_MAJOR
+from beepboop_protocol.audio_events import AudioEvent
+from beepboop_protocol.core_events import CoreEvent
+from beepboop_protocol.envelope import PROTOCOL_MAJOR
 
 
 def protocol_schema() -> dict[str, Any]:

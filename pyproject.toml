@@ -14,10 +14,10 @@ name = "beepboop-workspace"
 version = "0.0.0"
 description = "uv workspace root for beepboop (not a package)"
 requires-python = ">=3.12,<3.13"
-license = "MIT"
+license = "GPL-3.0-or-later"
 # Depending on every member makes a plain `uv sync` (CONTRIBUTING §2) install
 # the whole workspace; `uv sync --all-packages` (CI) is equivalent.
-dependencies = ["beepboop", "beepboop-audio", "beepboop-bench"]
+dependencies = ["beepboop", "beepboop-audio", "beepboop-bench", "beepboop-protocol"]
 
 [dependency-groups]
 dev = [
@@ -42,20 +42,23 @@ default-groups = ["dev"]
 [tool.uv.workspace]
 # tools/train_wakeword is deliberately NOT a member: its training stack is
 # heavy and laptop-only, so it carries its own dependency file.
-members = ["core", "audio", "tools/bench"]
+members = ["protocol", "core", "audio", "tools/bench"]
 
 [tool.uv.sources]
 beepboop = { workspace = true }
 beepboop-audio = { workspace = true }
 beepboop-bench = { workspace = true }
+beepboop-protocol = { workspace = true }
 
 # ---------------------------------------------------------------- ruff --------
 
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-# docs/ holds spec + the module template (code against APIs that do not exist yet).
-extend-exclude = ["docs"]
+# docs/module-template IS linted (it is what `beepboop module new` copies, ROADMAP v0.1
+# acceptance 10). Excluded: docs/research (read-only provenance) and the spec's
+# Markdown, whose Python blocks are illustrative sketches, not formatted code.
+extend-exclude = ["docs/research", "docs/**/*.md"]
 
 [tool.ruff.lint]
 select = [
@@ -80,10 +83,14 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101", "S105", "S106"]  # assert is how pytest works; fake secrets
+# A module folder is not an importable package name, so its tests import the module
+# relatively (`from ..module import Module`, MODULES §12.4).
+"docs/module-template/tests/**" = ["TID252"]
+"modules/*/tests/**" = ["TID252"]
 "tools/ci/**" = ["T201"]           # CI scripts report to stdout
 
 [tool.ruff.lint.isort]
-known-first-party = ["beepboop", "beepboop_audio", "beepboop_bench", "linkcheck", "import_ban"]
+known-first-party = ["beepboop", "beepboop_audio", "beepboop_bench", "beepboop_protocol", "linkcheck", "import_ban"]
 
 [tool.ruff.format]
 line-ending = "lf"
@@ -95,7 +102,10 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
-include = ["core", "audio", "tools/bench", "tools/ci", "tools/probes", "deploy", "conftest.py"]
+include = ["protocol", "core", "audio", "tools/bench", "tools/ci", "tools/probes", "deploy", "conftest.py"]
+# docs/module-template is excluded from pyright until the Module/ToolContext API it
+# imports (beepboop.module, beepboop.testing) exists in v0.1 (ROADMAP v0.1); ruff
+# already lints it.
 exclude = ["**/.venv", "**/__pycache__", "docs", "tools/train_wakeword"]
 extraPaths = ["tools/ci"]
 reportMissingModuleSource = "warning"
@@ -106,7 +116,7 @@ reportUnnecessaryTypeIgnoreComment = "error"
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = [
-    "core", "audio", "tools/bench", "tools/ci", "tools/probes", "deploy",
+    "protocol", "core", "audio", "tools/bench", "tools/ci", "tools/probes", "deploy",
     # Runs in the workspace venv (pydantic/pyyaml/structlog/numpy only); the
     # heavy training stack is in its own lock and those tests skip without it.
     "tools/train_wakeword/tests",
@@ -133,7 +143,7 @@ filterwarnings = ["error"]
 
 [tool.coverage.run]
 branch = true
-source = ["beepboop", "beepboop_audio", "beepboop_bench"]
+source = ["beepboop", "beepboop_audio", "beepboop_bench", "beepboop_protocol"]
 
 [tool.coverage.report]
 show_missing = true

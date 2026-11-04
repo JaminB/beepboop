@@ -86,6 +86,7 @@ The external door ships in v0.2 ([ROADMAP.md](ROADMAP.md#v02-your-accounts-your-
 4. Rate limits: the policy limiter ([IDENTITY_AND_TRUST.md §7.2](IDENTITY_AND_TRUST.md#72-algorithm)); exceeded → `429` + `Retry-After`.
 5. Auth: OAuth 2.1 or a personal access token, §10.
 6. No resumability; long actions (v0.3 routines) use handle-based results, not streams.
+7. **Wire tool names use the same mapping as the LLM door:** `.` → `__` (`home.turn_on` is advertised and called as `home__turn_on`), defined once in [LLM_PROVIDERS §3.2](LLM_PROVIDERS.md#32-request-mapping). Many MCP clients pass tool names straight to an LLM API that allows only `[a-zA-Z0-9_-]`, and one name per tool on every door keeps transcripts and audit rows comparable. The registry, audit log and docs keep the dotted form; module verbs never contain `__`.
 
 ---
 

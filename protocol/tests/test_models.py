@@ -8,10 +8,11 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from beepboop_audio.events import (
+from beepboop_protocol import (
     AUDIO_EVENT_CLASSES,
     CORE_EVENT_CLASSES,
-    EMBEDDING_DIM,
+    DEFAULT_EMBEDDING_DIM,
+    MAX_EMBEDDING_DIM,
     CapturePinData,
     EnrollClipData,
     EnrollQuality,
@@ -33,8 +34,10 @@ from beepboop_audio.events import (
     new_ulid,
     protocol_schema,
 )
-from beepboop_audio.events.examples import (
+from beepboop_protocol.examples import (
     EXAMPLE_PIN_HASH,
+    EXAMPLE_PROFILE_ALEX,
+    EXAMPLE_PROFILE_SAM,
     example_audio_events,
     example_core_events,
 )
@@ -148,9 +151,9 @@ def test_control_plane_events_carry_no_transcript_field() -> None:
 
 @pytest.mark.parametrize("bad", ["GUEST", "Guest", "gUeSt"])
 def test_guest_must_be_lowercase_literal(bad: str) -> None:
-    with pytest.raises(ValidationError, match="guest"):
+    with pytest.raises(ValidationError, match="profile_id"):
         SpeakerProvisionalData(profile_id=bad, score=0.1, margin=0.0, audio_ms=1000)
-    with pytest.raises(ValidationError, match="guest"):
+    with pytest.raises(ValidationError, match="profile_id"):
         SpeakerCandidate(profile_id=bad, score=0.1)
     ok = SpeakerProvisionalData(profile_id="guest", score=0.1, margin=0.0, audio_ms=1000)
     assert ok.profile_id == "guest"
@@ -163,19 +166,32 @@ def test_profile_id_is_required_on_speaker_events() -> None:
         SpeakerProvisionalData(profile_id="", score=0.1, margin=0.0, audio_ms=1000)
 
 
+@pytest.mark.parametrize(
+    "bad", ["alex", "01jbw2k3m4n5p6q7r8s9t0vwxy", "81JBW2K3M4N5P6Q7R8S9T0VWXY"]
+)
+def test_profile_id_is_a_ulid_or_guest(bad: str) -> None:
+    """ARCHITECTURE §4.4: ``profiles.id`` ULIDs, or exactly ``guest``."""
+    with pytest.raises(ValidationError):
+        SpeakerCandidate(profile_id=bad, score=0.1)
+    assert SpeakerCandidate(profile_id=new_ulid(), score=0.1).profile_id
+
+
+ALEX, SAM = EXAMPLE_PROFILE_ALEX, EXAMPLE_PROFILE_SAM
+
+
 def _final(**over: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "profile_id": "alex", "score": 0.8, "margin": 0.2, "anchor": True, "audio_ms": 2000,
-        "candidates": [{"profile_id": "alex", "score": 0.8}, {"profile_id": "sam", "score": 0.5}],
+        "profile_id": ALEX, "score": 0.8, "margin": 0.2, "anchor": True, "audio_ms": 2000,
+        "candidates": [{"profile_id": ALEX, "score": 0.8}, {"profile_id": SAM, "score": 0.5}],
     }  # fmt: skip
     return base | over
 
 
 def test_speaker_final_candidates_top_three_sorted_unique() -> None:
     SpeakerFinalData.model_validate(_final(), strict=False)
-    too_many = [{"profile_id": f"p{i}", "score": 0.9 - i / 10} for i in range(4)]
-    unsorted = [{"profile_id": "a", "score": 0.1}, {"profile_id": "b", "score": 0.9}]
-    repeated = [{"profile_id": "a", "score": 0.9}, {"profile_id": "a", "score": 0.1}]
+    too_many = [{"profile_id": new_ulid(), "score": 0.9 - i / 10} for i in range(4)]
+    unsorted = [{"profile_id": ALEX, "score": 0.1}, {"profile_id": SAM, "score": 0.9}]
+    repeated = [{"profile_id": ALEX, "score": 0.9}, {"profile_id": ALEX, "score": 0.1}]
     for candidates in (too_many, unsorted, repeated):
         with pytest.raises(ValidationError):
             SpeakerFinalData.model_validate(_final(candidates=candidates), strict=False)
@@ -275,28 +291,34 @@ def _quality() -> EnrollQuality:
 
 
 def test_enroll_clip_embedding_iff_accepted() -> None:
-    emb = [0.0] * EMBEDDING_DIM
+    emb = [0.0] * DEFAULT_EMBEDDING_DIM
     EnrollClipData(session_id="s", index=0, accepted=True, quality=_quality(), embedding=emb)
     EnrollClipData(session_id="s", index=1, accepted=False, quality=_quality())
     with pytest.raises(ValidationError):
         EnrollClipData(session_id="s", index=0, accepted=True, quality=_quality())
     with pytest.raises(ValidationError):
         EnrollClipData(session_id="s", index=0, accepted=False, quality=_quality(), embedding=emb)
-    with pytest.raises(ValidationError):
-        EnrollClipData(
-            session_id="s", index=0, accepted=True, quality=_quality(), embedding=emb[:-1]
-        )
+    for bad in ([], [0.0] * (MAX_EMBEDDING_DIM + 1), [float("nan")]):
+        with pytest.raises(ValidationError):
+            EnrollClipData(
+                session_id="s", index=0, accepted=True, quality=_quality(), embedding=bad
+            )
 
 
-def test_speaker_dim_is_fixed_in_protocol_1() -> None:
-    with pytest.raises(ValidationError):
-        SpeakerInfo(model_id="m", model_sha="s", dim=256)
+def test_speaker_dim_is_announced_not_fixed() -> None:
+    """ADR 0019: any dim in 1..MAX_EMBEDDING_DIM; 512 is only the v0.1 value."""
+    for dim in (192, DEFAULT_EMBEDDING_DIM, MAX_EMBEDDING_DIM):
+        assert SpeakerInfo(model_id="m", model_sha="s", dim=dim).dim == dim
+    for dim in (0, MAX_EMBEDDING_DIM + 1):
+        with pytest.raises(ValidationError):
+            SpeakerInfo(model_id="m", model_sha="s", dim=dim)
 
 
 def test_profiles_sync_centroid_length_and_unique_profiles() -> None:
     sync = example_core_events()[6].model_dump()["data"]
-    bad_dim = {**sync, "profiles": [{**sync["profiles"][0], "centroids": [[0.0] * 10]}]}
-    with pytest.raises(ValidationError):
+    mixed = [[0.0] * 10, [0.0] * 11]
+    bad_dim = {**sync, "profiles": [{**sync["profiles"][0], "centroids": mixed}]}
+    with pytest.raises(ValidationError, match="same length"):
         ProfilesSyncData.model_validate(bad_dim, strict=False)
     dup = {**sync, "profiles": sync["profiles"] * 2}
     with pytest.raises(ValidationError, match="repeat"):

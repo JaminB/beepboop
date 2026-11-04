@@ -14,7 +14,7 @@ script of its own: core mounts `beepboop_bench.cli:app` as `beepboop bench`.
 ## Run
 
 ```bash
-uv sync --all-packages --all-extras            # --all-extras: bench-only phonemizer for TTS
+uv sync --all-packages                         # piper-phonemize comes with beepboop-audio (TTS)
 uv run python -m beepboop_bench.models fetch   # pinned weights -> models/ (sha256-verified)
 uv run beepboop bench --help
 uv run beepboop bench speaker|stt|tts|wake|aec|endpoint|llm|e2e|ram|thermal
@@ -52,7 +52,7 @@ every import is noted in `sections.ram.notes`.
 | `models.py` | `models/manifest.yaml` loader, fetcher (https + sha256 + safe tar extraction), `LICENSES.md` generator. `python -m beepboop_bench.models fetch\|verify\|licenses`. |
 | `corpus.py` | The corpus manifest schema (clip kinds, labels) and loader. |
 | `runtime.py` | The only module importing sherpa-onnx / pymicro-wakeword: typed shims with explicit thread caps. |
-| `phonemize.py` | Lazy `piper_phonemize` wrapper (sherpa-onnx 2.0 has no built-in espeak frontend). |
+| `phonemize.py` | Re-exports the product phonemiser `beepboop_audio.tts.sherpa_piper.phonemize` (`piper-phonemize` over espeak-ng; sherpa-onnx 2.0 has no built-in espeak frontend, ADR 0020). |
 | `stages.py` | `bench speaker\|stt\|tts\|wake\|endpoint`: real models, real clips, `perf_counter` around the inference the product would run. |
 | `e2e.py` | Concurrent realtime replay: VAD -> hangover -> STT flush and speaker embed in parallel -> fast path or LLM -> TTS; one `Turn` per clip. |
 | `samplers.py` | 1 Hz RAM (`MemAvailable`, zram, OOM kills from the kernel log) and thermal (`vcgencmd`) samplers; no-ops with a reason off the Pi. |

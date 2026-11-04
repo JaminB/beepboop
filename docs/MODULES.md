@@ -30,7 +30,7 @@ modules/<id>/
   evals.yaml        # utterance → expected tool + args (+ profile, + expected denial)
   tests/            # pytest; `tests/test_module.py` is scaffolded (§12.4)
   README.md         # optional: human overview; defaults to the manifest summary if absent
-  LICENSES.md       # only when the module or a vendored dependency is not MIT
+  LICENSES.md       # only when the module bundles data or is not GPL-3.0-or-later
   assets/           # optional: icon.svg (UI)
 ```
 
@@ -80,7 +80,7 @@ The full schema lives at `core/beepboop/registry/manifest.schema.json` (JSON Sch
 | `scope` | enum | — | `household` \| `profile`. Who owns the connection and the settings. See §4.3. |
 | `category` | enum | — | `home` \| `media` \| `productivity` \| `information` \| `communication` \| `persona` \| `system`. Used by the UI and module cards. |
 | `locales` | string[] | `["en"]` | BCP-47 tags the module's AGENT.md and tool descriptions support. |
-| `license` | string | `MIT` | SPDX identifier. Non-MIT must be explained in `modules/<id>/LICENSES.md`. |
+| `license` | string | `GPL-3.0-or-later` | SPDX identifier, the project's licence by default. Any other licence must be GPL-3.0-compatible (permissive, LGPL, GPL-2.0-or-later, MPL-2.0) and is explained in `modules/<id>/LICENSES.md`. |
 | `homepage` | string (uri) | optional | Shown in the UI. |
 | `keywords` | string[] | `[]` | ≤ 12 words; indexed by `find_tools` (BM25) in addition to names and descriptions. |
 | `requires` | object | optional | See §4.4. Declaring `requires.ha` makes the module HA-backed (§4.2). |

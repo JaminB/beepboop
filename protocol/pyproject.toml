@@ -1,0 +1,22 @@
+[project]
+name = "beepboop-protocol"
+version = "0.0.0"
+description = "beepboop audio <-> core event protocol and the shared redacting log setup"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "GPL-3.0-or-later"
+authors = [{ name = "beepboop contributors" }]
+# Deliberately light (ADR 0019): both service images install this package, so it
+# must never depend on numpy, a speech runtime or anything audio-capable. A test
+# (tests/test_address_schema_imports.py) enforces that at import time.
+dependencies = [
+    "pydantic>=2.11,<3",
+    "structlog>=25.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["beepboop_protocol"]

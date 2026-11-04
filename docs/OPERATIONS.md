@@ -34,13 +34,15 @@ Everything below is what `install.sh` (§5) does; it is listed so an operator ca
 5. **Memory and logs:** zram swap at 50 % of RAM (`zstd`), `vm.swappiness=60`, journald capped at 200 MB persistent on the SSD. Container logs use the Docker `json-file` driver, `max-size 20m, max-file 5`: about 100 MB per service, **about 10 days at normal volume** for core. This is the only log-retention rule; other docs link here.
 6. **Clock and watchdog:** chrony `makestep 1 -1` (step at any offset on every sync); the BCM2711 hardware watchdog with `RuntimeWatchdogSec=30`.
 7. **Audio:** Pi OS Lite starts no PipeWire or PulseAudio, so the container's raw ALSA access to `/dev/snd` is uncontested. A udev rule gives the array a stable ALSA name (`hw:XVF3800`) and `audio` group ownership.
-8. **Firewall (default-deny inbound):** nftables `input` policy `drop`; allow established/related, loopback, `22/tcp`, `80/443/tcp`, `8443` and `8445/tcp` (Caddy admin gates), `5353/udp`, plus the ports each enabled Compose profile declares in `deploy/ports.yaml` with a reason (e.g. Music Assistant stream `8097`). HA's own `server_host: 127.0.0.1` binding is primary for :8123; the drop policy is the backstop (M0 item V1). `beepboop doctor` lists every listening non-loopback socket and flags any not on the allowlist.
+8. **Firewall (default-deny inbound):** nftables `input` policy `drop` ([`deploy/nftables/beepboop.nft`](../deploy/nftables/beepboop.nft); it never flushes Docker's tables). In order: accept loopback; **drop `8123/tcp`** (before anything can re-open it, [HOME_ASSISTANT §2.1](HOME_ASSISTANT.md#21-loopback-bind-plus-nftables)); accept established/related, drop invalid; accept ICMP echo-request, destination-unreachable and time-exceeded (IPv4 path MTU), all ICMPv6 (neighbour discovery, router advertisements, PMTU: IPv6 breaks without them) and DHCPv6 client replies (`546/udp` from `fe80::/10`); then the ports in `deploy/ports.yaml`: `base` (`22/tcp`, `80/443/tcp`, `8443` and `8445/tcp` for the Caddy admin gates, `5353/udp`), each enabled Compose profile's entries (e.g. Music Assistant stream `8097`) and the `user` entries. HA's own `server_host: 127.0.0.1` binding is primary for :8123; the drop is the backstop (M0 item V1). Default-deny also drops SSDP/UPnP discovery replies and inbound HomeKit, so integrations relying on them need a `user` entry. `beepboop doctor` lists every listening non-loopback socket and flags any not on the allowlist.
+
+   **`deploy/ports.yaml` schema** (`schema: 1`): four lists, `base`, `profiles.<profile>` (one list per Compose profile), `user` (ports of user-managed HA companions or discovery protocols) and `loopback_only` (sockets that must never bind a LAN address; `doctor` fails if one does). Every entry is `{port, proto: tcp|udp, service, reason}` and the reason is mandatory. `base` is written literally in the nftables file; `install.sh` adds the enabled profiles' and the `user` ports to its `lan_tcp`/`lan_udp` sets. `beepboop doctor` and `deploy/tests/test_deploy.py` read the file, and the test keeps `base` and the nftables file in step.
 9. **Unattended OS security updates** (`unattended-upgrades`, security pocket only) are on by default. They never touch containers and never reboot; the health page shows "reboot pending". This is the only automatic update on the device (§9).
 10. **Data root:** `/srv/beepboop/` on the SSD; contents per directory are in [DATA_AND_PRIVACY §2](DATA_AND_PRIVACY.md#2-storage-layout), plus `deploy/` and `run/` (`host.json`, §5). **Optional LUKS data partition** (`install.sh --luks`) puts `/srv/beepboop` on an encrypted volume so HA's config and credentials, Music Assistant data, the local CA key and transcripts are protected at rest too (beepboop's own secrets and voiceprints are envelope-encrypted regardless). The passphrase must be entered over SSH at every boot, so it is off by default ([SECURITY.md](../SECURITY.md)).
 
 ## 3. Compose layout
 
-**This section is the canonical deploy shape**; other docs link here rather than restating it. Four services, host networking for the three that need the LAN or loopback, **no network at all** for audio. Everything is pinned by image digest. The only optional capability in v0.1 is the `music` profile. MQTT brokers, Z-Wave and Matter servers are Home Assistant companions the user runs and manages; beepboop neither ships nor updates them ([ADR 0016](adr/0016-docker-compose-mit.md)).
+**This section is the canonical deploy shape**; other docs link here rather than restating it. The sketch below shows the shape with placeholders and the 4 GB values; the literal file is [`deploy/compose.yaml`](../deploy/compose.yaml), which reads digests and memory caps from `.env` (table below) and must match this sketch. Four services, host networking for the three that need the LAN or loopback, **no network at all** for audio. Everything is pinned by image digest. The only optional capability in v0.1 is the `music` profile. MQTT brokers, Z-Wave and Matter servers are Home Assistant companions the user runs and manages; beepboop neither ships nor updates them ([ADR 0016](adr/0016-docker-compose-mit.md)).
 
 ```yaml
 # /srv/beepboop/deploy/compose.yaml  (sketch; digests and the HA tag are placeholders until a release pins them)
@@ -75,7 +77,9 @@ services:
       BB_AUDIO_SOCKET: /run/beepboop/audio.sock
       BB_HA_URL: ws://127.0.0.1:8123/api/websocket
       BB_PUBLIC_URL: https://${BB_HOST:-beepboop.local}
+      BB_KEK_PASSPHRASE_FILE: /run/secrets/kek_passphrase            # v0.1 KEK source (DATA_AND_PRIVACY §6.3)
     volumes:
+      - /etc/beepboop/kek.passphrase:/run/secrets/kek_passphrase:ro   # host-only file, outside the data root
       - /srv/beepboop/config/beepboop.yaml:/config/beepboop.yaml:ro   # household config file
       - /srv/beepboop/core:/data                                      # beepboop.db + WAL
       - /srv/beepboop/backups:/backups                                # VACUUM INTO target (§10)
@@ -84,7 +88,7 @@ services:
       - /srv/beepboop/models:/models:ro                               # manifest + LICENSES only; core never loads weights
       - /srv/beepboop/run:/hostrun:ro                                 # host.json from beepboop-host.timer (§5)
       - bb-run:/run/beepboop
-    devices: ["/dev/vcio:/dev/vcio"]             # Pi OTP device key -> KEK (DATA_AND_PRIVACY §6.3)
+    devices: ["/dev/vcio:/dev/vcio"]             # only for the optional OTP KEK upgrade; v0.1 uses the passphrase file (DATA_AND_PRIVACY §6.3)
     group_add: ["video"]
     mem_limit: 768m                              # 1g on 8 GB
     cpuset: "0-1"
@@ -123,7 +127,8 @@ services:
     cpuset: "2-3"
     oom_score_adj: -500                          # the OOM killer takes HA before it takes audio
     healthcheck:                                 # the capture thread touches the heartbeat file every 10 s
-      test: ["CMD", "sh", "-c", "test $(( $(date +%s) - $(stat -c %Y /run/beepboop/audio.heartbeat) )) -lt 30"]
+      # $$ escapes Compose interpolation; the container's sh sees a single $.
+      test: ["CMD", "sh", "-c", "test $$(( $$(date +%s) - $$(stat -c %Y /run/beepboop/audio.heartbeat) )) -lt 30"]
       interval: 15s
       timeout: 3s
       retries: 2
@@ -174,8 +179,16 @@ Rules the sketch encodes:
 - **Cores 2–3 belong to audio.** Wake word and the capture thread get real-time priority; STT and speaker ID run on the other core at 2 threads. Core, HA and Caddy share cores 0–1 with HA weighted lowest.
 - **Memory limits add up to less than the gate.** 64 + 768 + 768 + 1024 MB = 2.6 GB of hard caps on a 4 GB Pi, leaving 1.1–1.4 GB for the OS, Docker and page cache (less with `music`). The gate is G4.
 - **Core must boot without HA.** The fast path, timers and the web UI work while HA restarts; the `ha` module reconnects with backoff.
-- **Secrets are not in `.env`** (host, tier, locale, RAM profile, digests only). Credentials live envelope-encrypted in SQLite; `/config/beepboop.yaml` holds what must exist before the DB opens ([ARCHITECTURE §9](ARCHITECTURE.md#9-configuration-model)).
+- **Secrets are not in `.env`** (host, tier, locale, RAM profile, digests only; table below). Credentials live envelope-encrypted in SQLite; `/config/beepboop.yaml` holds what must exist before the DB opens ([ARCHITECTURE §9](ARCHITECTURE.md#9-configuration-model)).
 - **No container mounts `docker.sock`.** Anything that needs Docker runs on the host (§5).
+
+**`deploy/.env` keys** (template [`deploy/.env.example`](../deploy/.env.example), written by `install.sh`):
+
+| Key | Default | Notes |
+|---|---|---|
+| `BB_HOST`, `BB_TIER`, `BB_LOCALE` | `beepboop.local`, `0`, `en-US` | Canonical host (also rendered into HA's managed YAML, [HOME_ASSISTANT §2.1](HOME_ASSISTANT.md#21-loopback-bind-plus-nftables)), HTTPS tier, speech locale |
+| `BB_MEM_CADDY`, `BB_MEM_CORE`, `BB_MEM_AUDIO`, `BB_MEM_HA`, `BB_MEM_MUSIC` | 4 GB profile: `64m`, `768m`, `768m`, `1g`, `512m` | The RAM profile. 8 GB profile: `64m`, `1g`, `1g`, `2g`, `768m` (§7). `BB_MEM_AUDIO` also sets `memswap_limit`. Compose falls back to the 4 GB value when unset. Targets until G4 finalises them |
+| `BB_CADDY_DIGEST`, `BB_CORE_DIGEST`, `BB_AUDIO_DIGEST`, `BB_HA_DIGEST`, `BB_MUSIC_DIGEST` | empty | `sha256:<64 hex>`; an empty value makes Compose refuse to start. A release pins them together |
 
 ## 4. Caddy
 
@@ -265,7 +278,7 @@ Caddy renews with ARI when the CA offers it; nothing assumes a certificate lifet
 |---|---|---|
 | 1 Preflight | `aarch64`; model string contains "Raspberry Pi 4"; `MemTotal` ≥ 3.4 GiB; root filesystem on USB, not `mmcblk0`; free disk ≥ 3 GB; `get_throttled` is `0x0`; temperature < 70 °C; `/dev/snd` shows an XVF3800 | Any check, with a one-line explanation and doc link. `--force` lowers all but the architecture check to warnings. Warns when a 4 GB Pi requests any profile other than `music`. |
 | 2 Host packages and kernel | Installs §2, enables zram, chrony, avahi, nftables, the watchdog; appends the cgroup flags. Pre-pulls the four images in parallel with apt | apt fails |
-| 3 Data root | Creates `/srv/beepboop/*`; writes `compose.yaml`, `.env`, `Caddyfile`, `ports.yaml`, `config/beepboop.yaml`, the Tier-0 root (§4), the udev rule, the nftables ruleset, and systemd units `beepboop.service` (`docker compose up -d --remove-orphans`) and `beepboop-host.timer` | — |
+| 3 Data root | Creates `/srv/beepboop/*`; generates the KEK passphrase file `/etc/beepboop/kek.passphrase` if absent (32 random bytes, base64, mode 0400 for core's uid; never overwritten, never in a backup; the installer does **not** program the Pi OTP key, D3, [DATA_AND_PRIVACY §6.3](DATA_AND_PRIVACY.md#63-envelope-encryption)); writes `compose.yaml`, `.env`, `Caddyfile`, `ports.yaml`, `config/beepboop.yaml`, HA's managed `configuration.yaml` block rendered with `https://$BB_HOST` ([HOME_ASSISTANT §2.1](HOME_ASSISTANT.md#21-loopback-bind-plus-nftables)), the Tier-0 root (§4), the udev rule, the nftables ruleset, and systemd units `beepboop.service` (`docker compose up -d --remove-orphans`) and `beepboop-host.timer` | — |
 | 4 Models | Downloads every model in `models/manifest.yaml`, verifies sha256, writes `LICENSES.md` | Checksum mismatch |
 | 5 Images | `docker compose pull` by digest | Digest mismatch or registry unreachable |
 | 6 Up | `systemctl enable --now beepboop`; waits for `core` and `audio` healthchecks only. **The device speaks its claim code as soon as core and audio are healthy**; HA finishes its first boot in the background (up to 5 min) | Core or audio health not reached; prints `docker compose logs --tail 50` |
@@ -285,7 +298,7 @@ sequenceDiagram
     participant H as homeassistant
     participant U as Admin (phone)
     I->>C: compose up
-    C->>C: create /data/beepboop.db; derive KEK from OTP (or passphrase); generate recovery key
+    C->>C: create /data/beepboop.db; unwrap KEK with the passphrase file (OTP later, optional); generate recovery key
     C->>A: speak{"Hi, I'm beepboop. Open beepboop dot local and enter 4 7 1 9 2 2"}
     A-->>U: speech + LED pattern, repeated every 60 s for 5 minutes, then only on button press
     C->>H: in the background: wait for :8123, POST /api/onboarding/users, core_config, analytics opt-out
@@ -396,7 +409,7 @@ Restore is tested in CI by restoring the previous release's backup fixture into 
 | Command | Reports | Feeds |
 |---|---|---|
 | `bench speaker` | CAM++ embed latency p50/p95 for 1 s and 2 s clips, fp32 and int8; household EER on the fixture set | G1 |
-| `bench stt` | zipformer RTF at 1 and 2 threads, final-tail latency, WER (with and without hotwords) | G2 |
+| `bench stt` | zipformer RTF at 1 and 2 threads, final-tail latency, WER (with and without hotwords; the hotword delta is pending a BPE model, [VOICE_PIPELINE §10.2](VOICE_PIPELINE.md#102-per-profile-hotword-biasing)) | G2 |
 | `bench tts` | first-chunk latency per voice, RTF | G6 (stage check) |
 | `bench wake` | false accepts per 24 h on the soak corpus, false rejects at 1 m / 3 m, hit latency, CPU | G5 |
 | `bench aec` | wake-hit rate and STT WER during playback vs silence | V3 |
@@ -406,6 +419,8 @@ Restore is tested in CI by restoring the previous release's backup fixture into 
 | `bench ram` | peak of (`MemTotal` − `MemAvailable`) at 1 Hz during `e2e`, zram used, OOM kills per container; default profile and with `music` | G4 |
 | `bench thermal` | SoC temperature and throttle bits during a 20-minute `e2e` | G7 |
 | `bench all [--gates] [--json]` | everything above into `tools/bench/results/<date>-<host>.json`; `--gates` exits non-zero on any failed gate; CI diffs against the last accepted run | all |
+
+Flags and M0 scope: `--live` (alias `--llm-live`) lets `bench llm` and `e2e` call real Bedrock (about 20 billed calls); without it the LLM stages are not reported. `--ram-from <results.json>` (repeatable) merges the 24 h RAM profile from an earlier run on the same host and RAM variant, so G4 sees both `default` and `music`. Gates are judged on a 4 GB Pi; an 8 GB run is labelled as such and recorded alongside, never instead. **In M0, `bench e2e` is an in-process emulation**: it chains the real speech stages and the LLM call but has no agent loop, and the fast path is a stub, so its G6 numbers are provisional until the v0.1 loop exists.
 
 **Health endpoint.** `GET /api/health` (no auth for a bare `ok`; details need an admin session) returns per-service status, audio device present, HA connected, Bedrock reachable and last TTFT, last backup result and destination, cert expiry, pending update, the last 24 h p50/p95 per stage, and everything `host.json` carries. OpenTelemetry export is an optional sink, off by default.
 
@@ -462,11 +477,12 @@ Error mapping is owned by [LLM_PROVIDERS §3](LLM_PROVIDERS.md#3-bedrock-adapter
 
 ## 13. Model and licensing hygiene
 
-beepboop is MIT, and several of the best speech models are not. The rule is **downloaded, not vendored**: the repository contains manifests and license records, never weights whose license is unclear or incompatible.
+beepboop is GPL-3.0-or-later ([LICENSE](../LICENSE), [ADR 0020](adr/0020-gpl-3-and-espeak-phonemiser.md)), and several of the best speech models carry other licences. The rule is **downloaded, not vendored**: the repository contains manifests and license records, never weights. CC BY attributions are collected in [`NOTICE`](../NOTICE).
 
-- `models/manifest.yaml` is the single source of truth: one entry per artifact with `id`, `kind` (wake | vad | speaker | stt | tts), `url`, `sha256`, `size`, `license` (SPDX where possible), `attribution`, `source`, `notes`. The installer, `beepboop models verify` and CI all read it.
-- `models/LICENSES.md` is **generated** from the manifest by `tools/gen_licenses.py` and checked in; CI fails if it is stale or any license is missing, `UNKNOWN`, or on the deny list (`*-NC-*`, `GPL-*` for anything linked in-process). Module licence notes live in `modules/<id>/LICENSES.md` when a module bundles data; CI aggregates them into the release notes.
-- Known entries: Silero VAD (MIT), CAM++ WeSpeaker VoxCeleb ONNX (code Apache-2.0, weights CC BY 4.0, attribution in `NOTICE`), sherpa-onnx streaming zipformer English small (Apache-2.0), Piper-format voices (per-voice license), the stock "Hey beepboop" microWakeWord model (trained by `tools/train_wakeword/`; its training data licenses are in that README). openWakeWord pretrained models are CC BY-NC-SA and therefore plugin-only, never downloaded by default. Moonshine and Parakeet stay out until their licenses are verified.
-- The runtime is sherpa-onnx (Apache-2.0) for VAD, speaker ID, STT and TTS. The GPL `piper1` package is never linked into a beepboop process ([ADR 0009](adr/0009-microwakeword-and-sherpa-onnx.md)).
+- `models/manifest.yaml` is the single source of truth: one entry per artifact with `id`, `kind` (wake | vad | speaker | stt | tts), `url`, `sha256`, `size`, `license` (SPDX where possible), `attribution`, `source`, `notes`, and four install keys: `dest` (install path relative to `models/`, which containers mount at `/models`), `archive` (`tar.bz2` when the download is an archive, extracted with the `data` filter), `files` (named files the code opens inside an extracted archive) and `status` (`pinned`, or `pending` for an artifact with no published `url` yet, such as the first wake model). The schema is `ModelEntry` in `tools/bench/beepboop_bench/models.py`. The installer, `beepboop models verify` and CI all read it.
+- `models/LICENSES.md` is **generated** from the manifest by `python -m beepboop_bench.models licenses` and checked in; `licenses --check` (CI) fails if it is stale or a licence is missing, `UNKNOWN` or non-commercial (`*-NC-*`), or is neither on the GPL-3.0-compatible allow-list (permissive, CC0, CC BY, MPL-2.0, LGPL, GPL-2.0-or-later, GPL-3.0) nor a research-accepted licence the owner ruled on. GPL-incompatible licences (proprietary, GPL-2.0-only, ND) are refused because they are not on the list. Module licence notes live in `modules/<id>/LICENSES.md` when a module bundles data; CI aggregates them into the release notes.
+- Research-accepted, by owner ruling: `LicenseRef-Blizzard-2013-Lessac` (D1, 2026-11-03). Most English Piper voices, including the default `en_US-lessac-low`, and the LibriTTS-R sample generator used to train the wake word descend from the Blizzard 2013 Lessac corpus, which is licensed for research only. They are accepted for this personal/research project; a commercial build must swap the voice and train the wake word with the strict profile ([tools/train_wakeword/README.md §7.2](../tools/train_wakeword/README.md#72-the-lessac-provenance-accepted-by-the-owner-d1)).
+- Known entries: Silero VAD (MIT), CAM++ WeSpeaker VoxCeleb ONNX (code Apache-2.0, weights CC BY 4.0, attribution in `NOTICE`), sherpa-onnx streaming zipformer English small (Apache-2.0), Piper-format voices (per-voice licence; lessac-derived ones under D1), the stock "Hey beepboop" microWakeWord model (Apache-2.0; trained by `tools/train_wakeword/`, training-data licences in its `DATA_LICENSES.md`). openWakeWord pretrained models are CC BY-NC-SA and therefore plugin-only, never downloaded by default. Moonshine and Parakeet stay out until their licenses are verified.
+- The runtime is sherpa-onnx (Apache-2.0) for VAD, speaker ID, STT and TTS, plus `piper-phonemize` over espeak-ng (GPL-3.0) as the TTS phonemiser in the audio process, reading each voice's `espeak-ng-data` ([VOICE_PIPELINE §11.1](VOICE_PIPELINE.md#111-default-piper-voices-in-sherpa-onnx-sherpa-piper), [ADR 0020](adr/0020-gpl-3-and-espeak-phonemiser.md)).
 - Home Assistant is a trademark of the Open Home Foundation. beepboop "works with Home Assistant"; it is not branded as or bundled with it, and the HA image is pulled unmodified ([ADR 0016](adr/0016-docker-compose-mit.md)).
 - A model swap is an explicit `beepboop models update` on the host that re-verifies checksums and, for speaker models, puts every voiceprint into "re-enrolment needed" (§12).

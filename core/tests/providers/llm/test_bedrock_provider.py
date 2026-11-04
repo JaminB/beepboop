@@ -61,10 +61,81 @@ def test_access_keys_mode_needs_keys() -> None:
         BedrockProvider.from_settings(BedrockSettings.from_manifest())
 
 
-def test_bearer_token_mode_is_not_in_m0() -> None:
+def test_bearer_token_mode_needs_the_token() -> None:
     settings = BedrockSettings.from_manifest(credentials="bearer_token")
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(AuthError, match="bedrock_bearer_token"):
         BedrockProvider.from_settings(settings)
+    with pytest.raises(AuthError, match="bedrock_bearer_token"):
+        BedrockProvider.from_settings(settings, bearer_token=SecretStr(""))
+
+
+class _CapturedError(Exception):
+    """Raised from ``before-send`` so the captured request never leaves the process."""
+
+    def __init__(self, request: AWSPreparedRequest) -> None:
+        super().__init__("captured")
+        self.request = request
+
+
+def _capture_converse(client: Any) -> AWSPreparedRequest:  # Any: botocore client
+    def stop(request: AWSPreparedRequest, **_kwargs: object) -> None:
+        raise _CapturedError(request)
+
+    client.meta.events.register("before-send.bedrock-runtime.Converse", stop)
+    with pytest.raises(_CapturedError) as caught:
+        client.converse(
+            modelId=MODEL,
+            messages=[{"role": "user", "content": [{"text": "ping"}]}],
+            inferenceConfig={"maxTokens": 1},
+        )
+    return caught.value.request
+
+
+def _header(request: AWSPreparedRequest, name: str) -> str:
+    value: object = request.headers[name]
+    return value.decode() if isinstance(value, bytes) else str(value)
+
+
+@pytest.fixture
+def no_ambient_aws(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:  # Any: Path
+    """No AWS env credentials, config files or bearer env var: only what we pass in."""
+    import os
+
+    for name in list(os.environ):
+        if name.startswith("AWS_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(tmp_path / "config"))
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(tmp_path / "credentials"))
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+
+
+@pytest.mark.usefixtures("no_ambient_aws")
+def test_bearer_token_is_sent_as_authorization_bearer() -> None:
+    """``credentials: bearer_token`` signs with the Bedrock API key, not SigV4 (§3.5)."""
+    import os
+
+    settings = BedrockSettings.from_manifest(region="us-west-2", credentials="bearer_token")
+    token = SecretStr("ABSKexample-bedrock-api-key")
+    provider = BedrockProvider.from_settings(settings, bearer_token=token)
+
+    request = _capture_converse(provider._client)  # pyright: ignore[reportPrivateUsage] - test inspects the wire
+
+    assert _header(request, "Authorization") == f"Bearer {token.get_secret_value()}"
+    assert "X-Amz-Date" not in request.headers  # no SigV4
+    assert request.url.startswith("https://bedrock-runtime.us-west-2.amazonaws.com/")
+    assert "AWS_BEARER_TOKEN_BEDROCK" not in os.environ  # never via the environment
+
+
+@pytest.mark.usefixtures("no_ambient_aws")
+def test_access_keys_are_sent_as_sigv4() -> None:
+    settings = BedrockSettings.from_manifest(region="us-west-2")
+    provider = BedrockProvider.from_settings(
+        settings, access_key_id=SecretStr("AKIDEXAMPLE"), secret_access_key=SecretStr("x")
+    )
+
+    request = _capture_converse(provider._client)  # pyright: ignore[reportPrivateUsage] - test inspects the wire
+
+    assert _header(request, "Authorization").startswith("AWS4-HMAC-SHA256 Credential=AKIDEX")
 
 
 def test_from_settings_picks_the_alias_model() -> None:

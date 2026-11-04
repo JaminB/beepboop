@@ -41,8 +41,42 @@ log = get_logger(__name__)
 
 Kind = Literal["wake", "vad", "speaker", "stt", "tts"]
 
-#: Licences that may never ship (OPERATIONS §13 deny list).
-DENIED_LICENSE_MARKERS = ("-NC-", "GPL-", "UNKNOWN")
+#: Markers that can never ship (OPERATIONS §13 deny list): non-commercial, unknown.
+DENIED_LICENSE_MARKERS = ("-NC-", "UNKNOWN")
+
+#: SPDX ids a model may carry in a GPL-3.0-or-later project (OPERATIONS §13, ADR 0020).
+#: Permissive, CC BY, and GPL-3.0-compatible copyleft. Not here, so refused: NC, ND,
+#: proprietary, GPL-2.0-only (incompatible with GPL-3.0) and anything unrecognised.
+ALLOWED_LICENSES = frozenset(
+    {
+        "MIT",
+        "Apache-2.0",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "ISC",
+        "Zlib",
+        "Unlicense",
+        "CC0-1.0",
+        "CC-BY-3.0",
+        "CC-BY-4.0",
+        "MPL-2.0",
+        "LGPL-2.1-only",
+        "LGPL-2.1-or-later",
+        "LGPL-3.0-only",
+        "LGPL-3.0-or-later",
+        "GPL-2.0-or-later",
+        "GPL-3.0-only",
+        "GPL-3.0-or-later",
+    }
+)
+
+#: Non-SPDX licences the owner accepted for this personal/research project, with the
+#: ruling that accepted them. Adding a row needs an owner decision recorded in an ADR.
+RESEARCH_ACCEPTED_LICENSES: dict[str, str] = {
+    # Blizzard 2013 Lessac corpus: research-only provenance behind most English Piper
+    # voices and the LibriTTS-R sample generator. D1, accepted by the owner 2026-11-03.
+    "LicenseRef-Blizzard-2013-Lessac": "D1 (owner, 2026-11-03; ADR 0020)",
+}
 
 _CHUNK = 1 << 20
 _ENV_ROOT = "BB_MODELS_DIR"
@@ -244,12 +278,16 @@ LICENSES_HEADER = """# Model licences
 Generated from [`manifest.yaml`](manifest.yaml) by
 `python -m beepboop_bench.models licenses`. Do not edit by hand; edit the manifest and
 regenerate. CI compares this file with a fresh render and fails when it is stale, when a
-licence is missing or `UNKNOWN`, or when one is on the deny list (`*-NC-*`, `GPL-*`)
-([OPERATIONS §13](../docs/OPERATIONS.md#13-model-and-licensing-hygiene)).
+licence is missing, `UNKNOWN` or non-commercial (`*-NC-*`), or when it is neither on the
+GPL-3.0-compatible allow-list nor a research-accepted licence the owner ruled on
+([OPERATIONS §13](../docs/OPERATIONS.md#13-model-and-licensing-hygiene)). beepboop is
+GPL-3.0-or-later ([ADR 0020](../docs/adr/0020-gpl-3-and-espeak-phonemiser.md)); CC BY
+attributions are collected in [NOTICE](../NOTICE).
 
 Weights are downloaded at install into this folder (git-ignored); only this file and the
 manifest are tracked. The runtime for every model below is sherpa-onnx (Apache-2.0) except
-the wake word, which runs in `pymicro-wakeword` (Apache-2.0).
+the wake word, which runs in `pymicro-wakeword` (Apache-2.0). Piper voices are phonemised
+by `piper-phonemize` over espeak-ng (GPL-3.0), reading the voice's `espeak-ng-data`.
 """
 
 
@@ -282,10 +320,28 @@ def license_problems(manifest: Manifest) -> list[str]:
         if not lic:
             problems.append(f"{e.id}: licence missing")
             continue
-        for marker in DENIED_LICENSE_MARKERS:
-            if marker in lic.upper():
-                problems.append(f"{e.id}: licence {lic!r} matches deny marker {marker!r}")
+        denied = [m for m in DENIED_LICENSE_MARKERS if m in lic.upper()]
+        for marker in denied:
+            problems.append(f"{e.id}: licence {lic!r} matches deny marker {marker!r}")
+        if not denied and not license_allowed(lic):
+            problems.append(
+                f"{e.id}: licence {lic!r} is not on the GPL-3.0-compatible allow-list "
+                "and has no owner ruling (OPERATIONS §13)"
+            )
     return problems
+
+
+def license_allowed(expression: str) -> bool:
+    """A simple SPDX expression (``A AND B``, ``A OR B``) every part of which may ship.
+
+    ``AND`` needs every term allowed, ``OR`` needs one. Parentheses and ``WITH``
+    exceptions are not used by the manifest and are refused.
+    """
+    for conjunct in expression.split(" AND "):
+        options = [t.strip() for t in conjunct.split(" OR ")]
+        if not any(t in ALLOWED_LICENSES or t in RESEARCH_ACCEPTED_LICENSES for t in options):
+            return False
+    return True
 
 
 def licenses_path(root: Path | None = None) -> Path:

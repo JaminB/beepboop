@@ -2,7 +2,7 @@
 
 > Status: Draft spec · 2026-11-01 · Applies to: M0, v0.1, v0.2, v0.3+
 
-Guidance for Claude Code sessions (and humans) working in this repository. beepboop is an MIT-licensed Raspberry Pi 4 home voice assistant that wakes on "Hey beepboop", identifies the speaker by voice, and acts on that person's profile through a policy-enforced MCP tool registry backed by Home Assistant. This file tells you what the project is, where things go, which rules are non-negotiable, and what to do first.
+Guidance for Claude Code sessions (and humans) working in this repository. beepboop is a GPL-3.0-or-later Raspberry Pi 4 home voice assistant that wakes on "Hey beepboop", identifies the speaker by voice, and acts on that person's profile through a policy-enforced MCP tool registry backed by Home Assistant. This file tells you what the project is, where things go, which rules are non-negotiable, and what to do first.
 
 Related: [README.md](README.md) · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/MODULES.md](docs/MODULES.md) · [docs/adr/README.md](docs/adr/README.md) · [CONTRIBUTING.md](CONTRIBUTING.md)
 
@@ -13,11 +13,11 @@ Related: [README.md](README.md) · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 
 - **What:** a voice assistant appliance. Audio service (wake word, VAD, speaker ID, STT, TTS) → text events over a unix socket → core service (agent loop, policy, tool registry, modules, web UI, SQLite) → Home Assistant and per-person integrations.
 - **Differentiator:** it knows who is speaking and scopes every tool call to that person's profile and grants. Voice ID is *personalization*; a deterministic risk-tier policy decides what actually happens.
 - **Stack:** Python 3.12 (FastAPI, pydantic v2, structlog, `uv`), sherpa-onnx + microWakeWord for speech, Bedrock ConverseStream (Claude Haiku 5.5) as the default LLM, official `mcp` Python SDK at the external door, SvelteKit 5 static SPA, SQLite WAL, Caddy, Docker Compose.
-- **Authority order when docs disagree:** `docs/research/DECISIONS.md` > `docs/adr/*` > the topic doc in `docs/` > `docs/research/SYNTHESIS.md` > raw research reports. If you find a contradiction, fix the lower-authority doc in the same PR and note it in the PR description.
+- **Authority order when docs disagree:** `docs/research/DECISIONS.md` > `docs/adr/*` > the topic doc in `docs/` > `docs/research/SYNTHESIS.md` > raw research reports. If you find a contradiction, fix the lower-authority doc in the same PR and note it in the PR description. One exception: an Accepted ADR recording an owner decision dated after DECISIONS.md overrides the specific DECISIONS.md row it names, and only that row (so far: the licence row, [ADR 0020](docs/adr/0020-gpl-3-and-espeak-phonemiser.md)).
 
 ## 2. Current phase
 
-**M0 in progress: code done, hardware pending (2026-11-03).** Everything under `docs/` is still the specification. All session-doable M0 steps (§12) are built and green on x86; every gate (G1–G7) and verification item (V1–V5) is waiting on the owner with the Pi. The owner's ordered to-do list is [tools/M0_OWNER_CHECKLIST.md](tools/M0_OWNER_CHECKLIST.md); the dated status table is in [docs/ROADMAP.md](docs/ROADMAP.md#m0-prove-the-pi). Do not start v0.1 feature work until the M0 gates have passed on real hardware; if a gate fails the design changes (cloud STT default or 8 GB minimum), and v0.1 code written before that would be wasted.
+**M0 in progress: code done, hardware pending (2026-11-03).** Everything under `docs/` is still the specification. All session-doable M0 steps (§12) are built and green on x86; every gate (G1–G7) and verification item (V1–V5) is waiting on the owner with the Pi. The owner's ordered to-do list is [tools/M0_OWNER_CHECKLIST.md](tools/M0_OWNER_CHECKLIST.md); the dated status table is in [docs/ROADMAP.md](docs/ROADMAP.md#m0-prove-the-pi). The M0 spec findings were resolved on 2026-11-03 (owner decisions D1, D3, D4 and the move to GPL-3.0-or-later; see [ADR 0019](docs/adr/0019-shared-protocol-package-and-negotiated-embedding-dim.md), [ADR 0020](docs/adr/0020-gpl-3-and-espeak-phonemiser.md) and [ROADMAP M0](docs/ROADMAP.md#m0-prove-the-pi)); D2 (AWS profile) is still open. Do not start v0.1 feature work until the M0 gates have passed on real hardware; if a gate fails the design changes (cloud STT default or 8 GB minimum), and v0.1 code written before that would be wasted.
 
 ## 3. Repository layout
 
@@ -25,6 +25,8 @@ This is the only repository layout in the docs; other docs link here instead of 
 
 ```
 beepboop/
+├── protocol/                python package `beepboop_protocol` (installed in both containers; pydantic + structlog only)
+│   └── beepboop_protocol/   audio ⇄ core event protocol (models, JSON-lines codec, socket server/client, fake); log.py = structlog setup + redaction
 ├── core/                    python package `beepboop` (container beepboop-core)
 │   └── beepboop/
 │       ├── agent/           turn loop, fast path, sentence chunking, conversation and reply windows, context assembly
@@ -34,7 +36,8 @@ beepboop/
 │       ├── mcp/             external /mcp door (Streamable HTTP, OAuth 2.1, PATs); thin wrapper over registry
 │       ├── providers/llm/   LLMProvider protocol, bedrock/, openai_compat/, conformance suite
 │       ├── api/             FastAPI routes (/api, OpenAPI), session auth, static SPA mount
-│       └── db/              SQLite schema, migrations, single writer task, envelope encryption
+│       ├── secrets/         envelope encryption (KEK, DEKs, SecretStore): the only code that decrypts
+│       └── db/              SQLite schema, migrations, single writer task
 ├── audio/                   python package `beepboop_audio` (container beepboop-audio)
 │   └── beepboop_audio/
 │       ├── types.py         the provider Protocols and dataclasses (VOICE_PIPELINE §17 is the spec)
@@ -42,7 +45,7 @@ beepboop/
 │       ├── speaker/         SpeakerProvider: sherpa_campp/ (CAM++ via sherpa-onnx); SpeakerIdentifier (core logic, not a plugin)
 │       ├── stt/             SttProvider: sherpa_zipformer/ (default); wyoming/, deepgram/ (v0.2)
 │       ├── tts/             TtsProvider: sherpa_piper/ (default); wyoming/, polly/ (v0.2)
-│       └── events/          unix-socket event protocol (JSON-lines), Silero VAD + endpointing, earcons, PIN capture, ALSA I/O
+│       └── pipeline/        Silero VAD + endpointing, earcons, PIN capture, ALSA I/O; serves the event socket through `beepboop_protocol`
 ├── modules/<id>/            one folder per module: manifest.yaml, module.py, AGENT.md, SETUP.md, evals.yaml, tests/, LICENSES.md (if it bundles data)
 │   ├── ha/  timers/  lists/  weather/  caldav/  music/  persona/          (v0.1)
 │   └── google_calendar/  spotify/                                           (v0.2)
@@ -56,7 +59,7 @@ beepboop/
 └── docs/                    the spec (map in README), docs/adr/, docs/module-template/, docs/research/ (read-only provenance)
 ```
 
-Every provider, whether LLM or audio, lives at `<package>/<kind>/<id>/` and registers through an entry point (§7). The four audio provider kinds are exactly `wake`, `speaker`, `stt`, `tts` ([docs/VOICE_PIPELINE.md §17](docs/VOICE_PIPELINE.md#17-provider-interfaces), [docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md#7-provider-seams)); VAD is not a provider and `SpeakerIdentifier` is not pluggable. Directory names use underscores (`sherpa_campp/`); the entry-point ids are the hyphenated ones in VOICE_PIPELINE §17 (`sherpa-campp`). The Python entry point is a single CLI, `beepboop`, installed from `core/`. The audio service starts as `beepboop-audio` from `audio/`. Both share `uv.lock` at the repo root (a `uv` workspace).
+Every provider, whether LLM or audio, lives at `<package>/<kind>/<id>/` and registers through an entry point (§7). The four audio provider kinds are exactly `wake`, `speaker`, `stt`, `tts` ([docs/VOICE_PIPELINE.md §17](docs/VOICE_PIPELINE.md#17-provider-interfaces), [docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md#7-provider-seams)); VAD is not a provider and `SpeakerIdentifier` is not pluggable. Directory names use underscores (`sherpa_campp/`); the entry-point ids are the hyphenated ones in VOICE_PIPELINE §17 (`sherpa-campp`). The Python entry point is a single CLI, `beepboop`, installed from `core/`. The audio service starts as `beepboop-audio` from `audio/`. Both depend on `beepboop-protocol` from `protocol/` ([ADR 0019](docs/adr/0019-shared-protocol-package-and-negotiated-embedding-dim.md)), and all share `uv.lock` at the repo root (a `uv` workspace).
 
 ## 4. Hard rules
 
@@ -66,7 +69,7 @@ These are enforced by review and, where possible, by CI. A PR that breaks one is
 2. **Modules never import MCP, HA or LLM SDKs, nor `beepboop.ha`.** A module receives a `ToolContext` (`ha` policy-wrapped client, `http`, `kv`, `secrets`, `announce`, `spawn`, `dry_run`, `principal`; see [docs/MODULES.md §5.3](docs/MODULES.md)) and nothing else. CI greps `modules/**` for `import mcp`, `homeassistant`, `boto3`, `openai`, `anthropic` and `beepboop.ha` and fails on any hit.
 3. **Every module ships `AGENT.md`, `SETUP.md` and `evals.yaml`.** `beepboop module check` fails without them. `AGENT.md` is model-facing and served via `read_guide`; `SETUP.md` is human-facing. Descriptions are token-budgeted (≤ ~80 words per tool, ≤ ~1.5k tokens of module cards per profile) and linted.
 4. **Audio never leaves the audio service.** No PCM ever crosses the socket. Only the text events in [docs/ARCHITECTURE.md §4.2](docs/ARCHITECTURE.md#42-event-catalog) cross; control-plane events carry no transcript text. Provider configuration reaches audio as a read-only mounted config file, never as an event. No audio bytes in the database, in logs, in the LLM request or over `/mcp`. **No audio is ever persisted, anywhere, for any reason** ([ADR 0018](docs/adr/0018-no-audio-retention.md)): no enrollment clips, no false-wake clips, no debug captures. Enrollment keeps embeddings only, so a speaker-model change means re-enrollment. Do not add a `keep_audio` flag, an `audio_ref` column or a clip queue; a v0.2 proposal for an opt-in false-wake queue needs a new ADR first.
-5. **No secrets or PINs in logs, transcripts or LLM context.** Spoken PINs are verified inside the audio service against the hash core sends with `capture_pin`; only the outcome (`ok` / `mismatch` / `timeout` / `cancelled`) returns. structlog processors redact anything named `*secret*`, `*token*`, `*password*`, `*pin*`. Tool args are stored `args_redacted`.
+5. **No secrets or PINs in logs, transcripts or LLM context.** Spoken PINs are verified inside the audio service against the hash core sends with `capture_pin`; only the outcome (`ok` / `mismatch` / `timeout` / `cancelled`) returns. structlog processors redact anything named `*secret*`, `*token*`, `*password*`, `*pin*`; the match is a case-insensitive substring match on key names at any depth, so it over-redacts (`mapping`, `pinned`) on purpose. The one processor lives in `protocol/beepboop_protocol/log.py` and both services use it. Tool args are stored `args_redacted`.
 6. **Voice ID is never authentication.** A speaker score chooses a profile and gates the `personal` tier with threshold + margin. It can never satisfy the `critical` tier; that always needs the second factor (web UI confirm, or per-profile spoken PIN fallback). Never write code or docs that imply otherwise.
 7. **Keep the core minimal.** New capability = new module (`modules/<id>/`) or new provider (`providers/llm/`, `audio/beepboop_audio/<kind>/`). If you are adding a feature flag or a special case to `core/beepboop/agent/` or `policy/`, stop and ask whether it is a module. Presets (Admin, Member, Child, Guest) are grant templates, not code paths; "Guest access" for a babysitter or visitor is ordinary grants with an expiry, not a preset ([docs/IDENTITY_AND_TRUST.md §9](docs/IDENTITY_AND_TRUST.md#9-presets)).
 8. **Pin dependencies.** `uv.lock` committed; container images by digest; `mcp` SDK, `sherpa-onnx`, `pymicro-wakeword` and HA at exact versions. Upgrades are their own PR with the contract-test suite green.
@@ -77,7 +80,7 @@ These are enforced by review and, where possible, by CI. A PR that breaks one is
 
 ## 5. Coding conventions
 
-### Python (`core/`, `audio/`, `modules/`, `tools/`)
+### Python (`protocol/`, `core/`, `audio/`, `modules/`, `tools/`)
 
 | Topic | Convention |
 |---|---|
@@ -87,7 +90,7 @@ These are enforced by review and, where possible, by CI. A PR that breaks one is
 | Types | `pyright` in **strict** mode. No `Any` without a `# pyright: ignore[...]` and a reason; the one blanket exception is that module handlers may return `dict[str, Any]`. Public seams are `typing.Protocol`s. |
 | Tests | `pytest`, `pytest-asyncio` (`asyncio_mode = "auto"`), `hypothesis` for policy/resolver properties. Tests live next to the code (`tests/` in each package and module). |
 | Concurrency | `async` everywhere in core. Blocking inference calls in the audio service run in a dedicated thread or a pinned sync loop, never on the event loop. Every awaitable is cancellable; barge-in and `cancel` depend on it. |
-| Logging | `structlog`, JSON to stdout, every line carries `turn_id` when inside a turn. No `print`. No f-strings in log calls (`log.info("tool.called", tool=name)`). |
+| Logging | `structlog`, JSON to stdout, every line carries `turn_id` when inside a turn. No `print`. No f-strings in log calls (`log.info("tool.called", tool=name)`). Every process calls `configure_logging()` from `beepboop_protocol.log` (core code imports it as `beepboop.log`) once at start; that installs the hard-rule-5 redaction. |
 | Models and schemas | `pydantic` v2 for every **core boundary object** (events, manifests, API bodies, `Principal`), with JSON Schema generated from the model and sorted deterministically. Module tool args are different: the manifest's JSON Schema is the only schema, and core validates against it. |
 | Tool handlers | `@tool("<id>.<verb>") async def <verb>(self, ctx: ToolContext, **args) -> dict`, with named args matching the manifest `args` (lint L2 checks the signature). `ctx.http` / `ctx.ha` / `ctx.announce` record intended effects automatically in dry-run ([docs/MODULES.md §12.3](docs/MODULES.md)). |
 | Errors | Raise typed exceptions (`PolicyDenied`, `NeedsConfirmation`, `ProviderError`); the agent loop turns them into speech. Never swallow exceptions silently. |
@@ -124,7 +127,7 @@ Full contract: [docs/LLM_PROVIDERS.md](docs/LLM_PROVIDERS.md).
 2. Translate only. The core loop owns tool execution, sentence chunking, retries, fallback and cancellation. If you find yourself writing a loop in a provider, stop.
 3. Map the `Request` prompt layout (`system` stable blocks with cache hints → volatile block, `messages`, deterministically sorted `tools`, `max_tokens`, `effort`, `metadata.profile_id`) to the vendor API. If the vendor has no prompt cache, set `caps.cache = False`; do not emulate.
 4. Register via the `beepboop.llm_providers` entry point in `pyproject.toml`. Declare `license`.
-5. Run the conformance suite: `uv run pytest core/beepboop/providers/llm/conformance -p <id>`. The full suite in [docs/LLM_PROVIDERS.md §6](docs/LLM_PROVIDERS.md) must pass.
+5. Run the conformance suite. The shared checks live in `core/beepboop/providers/llm/conformance/`; wire them up in `core/tests/providers/llm/test_<id>_conformance.py` (marked `conformance`) and run `uv run pytest -m conformance core/tests/providers/llm -k <id>` (live variants: `-m "conformance and live"`). The full suite in [docs/LLM_PROVIDERS.md §6](docs/LLM_PROVIDERS.md#6-conformance-suite) must pass.
 6. Add settings UI schema (credentials, model id, region) to the provider manifest so `System › LLM` auto-renders it.
 7. Document the provider in [docs/LLM_PROVIDERS.md](docs/LLM_PROVIDERS.md) and, if it changes the default or the protocol, amend [docs/adr/0010-llm-provider-protocol-bedrock-default.md](docs/adr/0010-llm-provider-protocol-bedrock-default.md).
 
@@ -136,7 +139,7 @@ Full contract: [docs/VOICE_PIPELINE.md §17](docs/VOICE_PIPELINE.md).
 2. Register the entry point in `beepboop.<kind>_providers` in `audio/pyproject.toml`. Declare `id`, `capabilities`, `license`. A new `SpeakerProvider` changes `model_id`, which invalidates every voiceprint: the UI must ask each person to re-enroll, because no enrollment audio exists to re-embed (hard rule 4).
 3. Add the weights to `models/manifest.yaml` (`url`, `sha256`, `license`, `attribution`) and regenerate the `models/LICENSES.md` row. No weights in the repo.
 4. Select it with `providers:` in `/config/beepboop.yaml` (the read-only household config file); no provider is chosen by env var or event.
-5. Pass `audio/tests/conformance` (load, warm-up, streaming, mid-stream cancellation, locale handling, memory ceiling).
+5. Pass the audio conformance suite (load, warm-up, streaming, mid-stream cancellation, locale handling, memory ceiling): `uv run pytest -m conformance audio/tests -k <id>`, the same form as §7.
 6. Run `uv run beepboop bench stt|tts|wake` on the Pi and record the numbers with date and Pi variant in [docs/VOICE_PIPELINE.md](docs/VOICE_PIPELINE.md).
 7. Cloud variants (Deepgram, Polly; v0.2) ship behind the `deploy/compose.cloud-speech.yaml` override, which gives audio a network, and read their credentials from the mounted provider config file. The privacy ledger must change when the override is active.
 
@@ -167,7 +170,7 @@ Most of these do not exist yet; as of M0 only `version`, `bench` and `llm probe`
 | `beepboop bench speaker\|stt\|tts\|wake\|aec\|endpoint\|llm\|e2e\|ram\|thermal\|all [--gates] [--json]` | core (+ audio) | Pipeline benchmark on the Pi; `--gates` is valid on `all` and exits non-zero if an M0 gate fails; results to `tools/bench/results/` | [OPERATIONS §11](docs/OPERATIONS.md#11-observability), [ROADMAP M0](docs/ROADMAP.md) |
 | `beepboop llm probe [--profile] [--region] [--pairs] [--cold-gap-minutes] [--gate] [--out]` | core (dev) | Measure Bedrock TTFT for M0 gate G3 (warm, cold-TLS, cold-cache turns; at most 20 billed calls) | [LLM_PROVIDERS](docs/LLM_PROVIDERS.md), [ROADMAP G3](docs/ROADMAP.md) |
 | `beepboop db migrate \| backup` | core | Schema migrations; `VACUUM INTO` snapshot encrypted to the recovery key | [DATA_AND_PRIVACY §5, §11](docs/DATA_AND_PRIVACY.md) |
-| `beepboop keys rotate-dek` | core | Re-wrap the data key under a new KEK version | [DATA_AND_PRIVACY §6.3](docs/DATA_AND_PRIVACY.md) |
+| `beepboop keys rotate-dek` | core | New active data key; re-encrypt every row under it. **Not wired yet** (v0.1): `SecretStore.rotate_dek` / `rotate_kek` in `core/beepboop/secrets/` are the hooks it will call | [DATA_AND_PRIVACY §6.3](docs/DATA_AND_PRIVACY.md#63-envelope-encryption) |
 | `beepboop ca fingerprint` | core | Print the Tier-0 local CA root fingerprint for the `/ca` helper | [WEB_UI §7](docs/WEB_UI.md) |
 | `beepboop enroll <profile>` | core (dev) | CLI voice enrollment for development | [VOICE_PIPELINE §9](docs/VOICE_PIPELINE.md) |
 | `beepboop policy explain --as <profile> <tool> [args]` | core | Print the authorize decision and which grant produced it | [IDENTITY_AND_TRUST §7](docs/IDENTITY_AND_TRUST.md) |
@@ -185,6 +188,7 @@ Development helpers that are not `beepboop` subcommands: `uv sync` (install the 
 | Bench on real Pi | `beepboop bench all --gates` on a self-hosted Pi 4 runner, HA running, 4 GB and 8 GB variants. Runs only on pushes to protected branches and maintainer-labelled PRs (never on fork `pull_request`), on an ephemeral runner in an isolated VLAN with no HA tokens; the waterfall and `results/*.json` are published as CI artifacts | Required for merges to `main` that touch `audio/` or `agent/` |
 | UI | `vitest` unit; Playwright for claim-code onboarding, enrollment, pending-approval confirm | On every PR |
 | Security | Import-ban grep (incl. `beepboop.ha`), secret-redaction tests, dependency audit, `models/LICENSES.md` lint, `modules/*/LICENSES.md` aggregation | On every PR |
+| Shell | `shellcheck` on every shipped shell script (`deploy/install.sh`, `tools/probes/*/*.sh`). **TODO:** not in CI yet; add it with `install.sh` (v0.1) | On every PR (planned) |
 | Doc lint | Relative links resolve; every `<module>.<verb>` identifier in `docs/*.md` exists in [MODULES §16](docs/MODULES.md) or [MCP §4](docs/MCP.md); UI paths match [WEB_UI §3](docs/WEB_UI.md); numbers carry "measured" or "target" | On every PR |
 
 Measured numbers go into the docs with the date and Pi variant; unmeasured numbers stay marked "target".
@@ -200,7 +204,7 @@ M0 is "prove the Pi". Its gates (G1–G7) and verification items (V1–V5) are i
 | Step | Output path | Proves | Needs Pi / human? | Done when |
 |---|---|---|---|---|
 | 1 Scaffold the workspace | `pyproject.toml`, `core/`, `audio/`, `tools/`, CI | — | No | `uv sync`, `ruff`, `pyright --strict`, `pytest` green on x86 with zero features |
-| 2 Event protocol | `audio/beepboop_audio/events/` | the protocol in [ARCHITECTURE §4](docs/ARCHITECTURE.md#4-audio--core-event-protocol) | No | Pydantic models + JSON-lines framing + in-process fake; round-trip tests pass |
+| 2 Event protocol | `protocol/beepboop_protocol/` | the protocol in [ARCHITECTURE §4](docs/ARCHITECTURE.md#4-audio--core-event-protocol) | No | Pydantic models + JSON-lines framing + in-process fake; round-trip tests pass |
 | 3 Compose skeleton | `deploy/compose.yaml`, `deploy/caddy/Caddyfile`, `deploy/ports.yaml` | V1 | Pi (verify) | Four services with digests, `mem_limit`s, `cpuset`, `/dev/snd`, HA host network; **owner verifies** HA binds `127.0.0.1:8123` and nftables drops LAN → :8123 |
 | 4 Wake-word pipeline | `tools/train_wakeword/` | G5 | No (training on a laptop) | A stranger regenerates `hey_beepboop` from the README; data licences recorded |
 | 5 Bench harness | `tools/bench/` | G1–G7 harness | No | `bench <sub>` loads the models, replays the corpus concurrently, emits waterfall JSON + table; `all --gates` encodes G1–G7 |
@@ -209,14 +213,14 @@ M0 is "prove the Pi". Its gates (G1–G7) and verification items (V1–V5) are i
 | 8 HA headless onboarding | `core/beepboop/ha/onboarding.py` | V2 | Pi (verify) | Scripted `/api/onboarding/*` + long-lived token, stored envelope-encrypted; **owner records** the exact sequence against the pinned HA |
 | 9 Record the fixture corpus | `tools/bench/record_fixture.py` → `tools/bench/corpus/` | prerequisite for G1, G2, G5 | **Owner with Pi** | ≥ 6 speakers, ≥ 200 utterances, 24 h living-room soak, recorded through the XVF3800 |
 | 10 Bench runs | `tools/bench/results/` | G1–G6 | **Owner with Pi** | 4 GB and 8 GB runs committed; numbers cited with dates in [VOICE_PIPELINE](docs/VOICE_PIPELINE.md) and [ROADMAP](docs/ROADMAP.md) |
-| 11 Hardware probes | `tools/bench/results/`, [HOME_ASSISTANT](docs/HOME_ASSISTANT.md), [DATA_AND_PRIVACY](docs/DATA_AND_PRIVACY.md) | V3, V4, V5 | **Owner with Pi** | AEC reference confirmed or barge-in deferred; 24 h ALSA soak clean; OTP KEK stable across reboots |
+| 11 Hardware probes | `tools/bench/results/`, [HOME_ASSISTANT](docs/HOME_ASSISTANT.md), [DATA_AND_PRIVACY](docs/DATA_AND_PRIVACY.md) | V3, V4, V5 | **Owner with Pi** | AEC reference confirmed or barge-in deferred; 24 h ALSA soak clean; passphrase-wrapped KEK survives a reboot and rejects a wrong passphrase (OTP KEK optional, owner decision D3) |
 | 12 Thermal | `tools/bench/results/` | G7 | **Owner with Pi** | 20 min `bench e2e` with no `0x4` bit in the reference fan case |
 
 **Status (2026-11-03)**: details, code paths and result citations in [ROADMAP M0](docs/ROADMAP.md#m0-prove-the-pi); owner steps in order in [tools/M0_OWNER_CHECKLIST.md](tools/M0_OWNER_CHECKLIST.md).
 
 | Step | Status |
 |---|---|
-| 1, 2, 5, 6 | done |
+| 1, 2, 5, 6 | done (step 2's protocol now lives in `protocol/beepboop_protocol/`, event protocol v2, [ADR 0019](docs/adr/0019-shared-protocol-package-and-negotiated-embedding-dim.md)) |
 | 3, 8 | code-done, pending owner (V1, V2) |
 | 4 | code-done, pending owner (training run, then G5) |
 | 7 | code-done, conformance passes; G3 pending owner (only a preliminary x86 workstation probe exists, not a gate result) |

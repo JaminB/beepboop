@@ -60,3 +60,13 @@ Research is complete. Workflow `wf_103f0e3b-c46` ran 7 researchers on Sonnet and
 |---|---|
 | Audio retention | **Absolute in v0.1**: no audio is ever persisted — no enrollment clips (`keep_audio`/`audio_ref` removed), no false-wake queue, no debug retention. A speaker-model change means re-enrollment (~2 min/person). An opt-in false-wake queue may be proposed for v0.2 via a new ADR (encrypted, 7 days, <=50 clips). |
 | Doc size rule | (1) Each fact has one owning doc; others link. (2) Topic docs fully specify only M0/v0.1; v0.2+ appears as <=10-line invariants + ROADMAP link. (3) Soft budget ~5k words per topic doc; MODULES.md, docs/module-template/ and AGENT.md guidance are exempt (they teach the agent). |
+
+## Owner rulings 2026-11-03 (after M0)
+
+These override earlier rows in this file where they conflict.
+
+- **License:** GPL-3.0-or-later replaces MIT ([ADR 0020](../adr/0020-gpl-3-and-espeak-phonemiser.md)). `piper-phonemize`/espeak-ng are product dependencies of the Piper TTS path.
+- **D1:** lessac-derived Piper voices (research-only provenance) are accepted for wake-word generation and the default TTS voice.
+- **D3:** OTP key programming is deferred; the argon2id passphrase KEK is the v0.1 default and OTP is an optional upgrade.
+- **D4:** all M0 spec findings are resolved, see ROADMAP M0. CAM++ embeddings are 512-d, negotiated per connection; the event protocol is its own package `beepboop-protocol`, version 2 ([ADR 0019](../adr/0019-shared-protocol-package-and-negotiated-embedding-dim.md)).
+- **Sequencing:** v0.1 software work may proceed in parallel with the M0 hardware gates. A failing gate still triggers its ROADMAP fallback ADR, and v0.1 code adapts.

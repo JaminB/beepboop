@@ -7,14 +7,18 @@ import asyncio
 import pytest
 from structlog.testing import capture_logs
 
-from beepboop_audio.events import (
+from beepboop_protocol import (
+    PROTOCOL_MAJOR,
     CancelData,
     CancelEvent,
     ConnectionClosedError,
     CoreHelloData,
     CoreHelloEvent,
+    EnrollClipEvent,
     ErrorEvent,
+    EventValidationError,
     HandshakeError,
+    ProfilesSyncEvent,
     ProtocolMismatchError,
     SttPartialData,
     SttPartialEvent,
@@ -26,13 +30,13 @@ from beepboop_audio.events import (
     fake_pair,
     open_fake_session,
 )
-from beepboop_audio.events.examples import (
+from beepboop_protocol.examples import (
     EXAMPLE_TURN_ID,
     example_audio_events,
     example_audio_hello,
     example_core_events,
 )
-from beepboop_audio.events.fake import fake_duplex_pair
+from beepboop_protocol.fake import fake_duplex_pair
 
 
 def _partial(text: str) -> SttPartialEvent:
@@ -140,11 +144,11 @@ async def test_open_fake_session_handshakes() -> None:
 
 async def test_protocol_mismatch_is_refused_with_fatal_error() -> None:
     audio, core = fake_pair()
-    future = CoreHelloEvent(data=CoreHelloData(protocol=2))
+    future = CoreHelloEvent(data=CoreHelloData(protocol=PROTOCOL_MAJOR + 1))
     core_task = asyncio.create_task(core_handshake(core, future))
     with pytest.raises(ProtocolMismatchError):
         await audio_handshake(audio, example_audio_hello())
-    await core_task  # core saw a protocol-1 audio hello, which it accepts
+    await core_task  # core saw a current-protocol audio hello, which it accepts
     error = await core.receive()
     assert isinstance(error, ErrorEvent)
     assert error.data.code == "protocol_mismatch"
@@ -154,7 +158,9 @@ async def test_protocol_mismatch_is_refused_with_fatal_error() -> None:
 async def test_core_refuses_newer_audio() -> None:
     audio, core = fake_pair()
     hello = example_audio_hello()
-    newer = hello.model_copy(update={"data": hello.data.model_copy(update={"protocol": 2})})
+    newer = hello.model_copy(
+        update={"data": hello.data.model_copy(update={"protocol": PROTOCOL_MAJOR + 1})}
+    )
     await audio.send(newer)
     with pytest.raises(ProtocolMismatchError):
         await core_handshake(core)
@@ -172,3 +178,44 @@ async def test_handshake_times_out() -> None:
     audio, _core = fake_pair()
     with pytest.raises(HandshakeError, match="no hello"):
         await audio_handshake(audio, example_audio_hello(), hello_timeout_s=0.05)
+
+
+# ------------------------------------------------- per-connection embedding dim --
+
+
+async def test_handshake_sets_embedding_dim_on_both_sides() -> None:
+    hello = example_audio_hello()
+    audio, core = await open_fake_session(hello)
+    assert audio.embedding_dim == core.embedding_dim == hello.data.speaker.dim
+
+
+async def test_embeddings_of_the_wrong_length_are_refused_and_dropped() -> None:
+    """ARCHITECTURE §4.4 / ADR 0019: the length is hello.speaker.dim, per connection."""
+    hello = example_audio_hello()
+    hello = hello.model_copy(
+        update={
+            "data": hello.data.model_copy(
+                update={"speaker": hello.data.speaker.model_copy(update={"dim": 192})}
+            )
+        }
+    )
+    audio, core = await open_fake_session(hello)
+    clip = next(e for e in example_audio_events() if isinstance(e, EnrollClipEvent))
+    sync = next(e for e in example_core_events() if isinstance(e, ProfilesSyncEvent))
+    assert clip.embedding_lengths() != (192,)
+
+    with pytest.raises(EventValidationError):
+        await audio.send(clip)
+    with pytest.raises(EventValidationError):
+        await core.send(sync)
+
+    # A peer that ignores the rule: the receiver drops the line and carries on.
+    audio.embedding_dim = None
+    with capture_logs() as logs:
+        await audio.send(clip)
+        await audio.send(_partial("still here"))
+        received = await core.receive()
+    assert isinstance(received, SttPartialEvent)
+    assert core.dropped == 1
+    assert core.seq_gaps == 0
+    assert any(entry["event"] == "event.dropped" for entry in logs)

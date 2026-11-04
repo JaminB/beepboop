@@ -14,7 +14,7 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import Field, model_validator
 
-from beepboop_audio.events.envelope import (
+from beepboop_protocol.envelope import (
     GUEST_PROFILE_ID,
     Embedding,
     EventBase,
@@ -73,9 +73,11 @@ class VoiceSpec(WireModel):
 class SpeakData(WireModel):
     """One sentence (or cached clip) of the reply.
 
-    ``clip`` is a pre-rendered clip key: a system-phrase key, a short ack or an
-    earcon name (VOICE_PIPELINE §11.3). When both are present audio plays the
-    clip and falls back to synthesizing ``text`` for an unknown clip.
+    ``clip`` is a key from the namespace ARCHITECTURE §4.2 defines (system-phrase
+    keys, ack keys, earcon names). At least one of ``clip`` and ``text`` is
+    present; ``text`` is what audio synthesizes when it has no clip for the key.
+    The key set is not enumerated here: it is owned by VOICE_PIPELINE and the
+    persona module may extend it, so only the key syntax is validated.
     """
 
     utterance_id: Name
@@ -216,12 +218,17 @@ class ProfilesSyncData(WireModel):
         ids = [p.profile_id for p in self.profiles]
         if len(set(ids)) != len(ids):
             raise ValueError("profiles.sync must not repeat a profile_id")
+        if len({len(c) for p in self.profiles for c in p.centroids}) > 1:
+            raise ValueError("all centroids in one profiles.sync must have the same length")
         return self
 
 
 class ProfilesSyncEvent(EventBase):
     type: Literal["profiles.sync"] = "profiles.sync"
     data: ProfilesSyncData
+
+    def embedding_lengths(self) -> tuple[int, ...]:
+        return tuple(len(c) for p in self.data.profiles for c in p.centroids)
 
 
 # ---------------------------------------------------------------- enrollment --

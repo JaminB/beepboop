@@ -2,11 +2,13 @@
 
 Import everything from here; core does too::
 
-    from beepboop_audio.events import CoreEventClient, SpeakEvent, decode_audio_event
+    from beepboop_protocol import CoreEventClient, SpeakEvent, decode_audio_event
 
-This package imports only the standard library, pydantic and structlog, never
-numpy or a speech runtime, so core can depend on it cheaply (a test enforces
-this). No model has a bytes or PCM field (CLAUDE.md hard rule 4; also tested).
+This package (``beepboop-protocol``, ADR 0019) imports only the standard
+library, pydantic and structlog, never numpy or a speech runtime, so both
+services depend on it cheaply (a test enforces this). No model has a bytes or
+PCM field (CLAUDE.md hard rule 4; also tested). ``beepboop_protocol.log`` is
+the shared redacting structlog setup (hard rule 5); import it explicitly.
 
 Layout:
 
@@ -20,9 +22,10 @@ Layout:
 * ``fake``         in-process queue pair for tests and the bench
 * ``examples``     one valid instance of every event (not re-exported)
 * ``schema``       deterministic JSON Schema
+* ``log``          structlog JSON setup + secret redaction (not re-exported)
 """
 
-from beepboop_audio.events.address import (
+from beepboop_protocol.address import (
     DEFAULT_ADDRESS,
     SocketAddress,
     TcpAddress,
@@ -30,7 +33,7 @@ from beepboop_audio.events.address import (
     address_from_env,
     parse_address,
 )
-from beepboop_audio.events.audio_events import (
+from beepboop_protocol.audio_events import (
     AUDIO_EVENT_CLASSES,
     AudioEvent,
     AudioHelloData,
@@ -65,8 +68,8 @@ from beepboop_audio.events.audio_events import (
     WakeEvent,
     WakeInfo,
 )
-from beepboop_audio.events.client import Backoff, CoreEventClient, CoreHandler, open_duplex
-from beepboop_audio.events.codec import (
+from beepboop_protocol.client import Backoff, CoreEventClient, CoreHandler, open_duplex
+from beepboop_protocol.codec import (
     MAX_LINE_BYTES,
     EventValidationError,
     FrameError,
@@ -76,7 +79,7 @@ from beepboop_audio.events.codec import (
     decode_core_event,
     encode,
 )
-from beepboop_audio.events.connection import (
+from beepboop_protocol.connection import (
     AudioSide,
     ByteDuplex,
     ConnectionClosedError,
@@ -91,7 +94,7 @@ from beepboop_audio.events.connection import (
     core_handshake,
     core_hello,
 )
-from beepboop_audio.events.core_events import (
+from beepboop_protocol.core_events import (
     CORE_EVENT_CLASSES,
     PIN_MAX_LEN,
     PIN_MIN_LEN,
@@ -121,24 +124,26 @@ from beepboop_audio.events.core_events import (
     TierThresholds,
     VoiceSpec,
 )
-from beepboop_audio.events.envelope import (
-    EMBEDDING_DIM,
+from beepboop_protocol.envelope import (
+    DEFAULT_EMBEDDING_DIM,
     GUEST_PROFILE_ID,
+    MAX_EMBEDDING_DIM,
     PROTOCOL_MAJOR,
     EventBase,
     WireModel,
     new_ulid,
 )
-from beepboop_audio.events.fake import fake_pair, open_fake_session
-from beepboop_audio.events.schema import protocol_schema, schema_json
-from beepboop_audio.events.server import AudioEventServer, AudioHandler, unix_sockets_supported
+from beepboop_protocol.fake import fake_pair, open_fake_session
+from beepboop_protocol.schema import protocol_schema, schema_json
+from beepboop_protocol.server import AudioEventServer, AudioHandler, unix_sockets_supported
 
 __all__ = [
     "AUDIO_EVENT_CLASSES",
     "CORE_EVENT_CLASSES",
     "DEFAULT_ADDRESS",
-    "EMBEDDING_DIM",
+    "DEFAULT_EMBEDDING_DIM",
     "GUEST_PROFILE_ID",
+    "MAX_EMBEDDING_DIM",
     "MAX_LINE_BYTES",
     "PIN_MAX_LEN",
     "PIN_MIN_LEN",

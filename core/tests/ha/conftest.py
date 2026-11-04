@@ -5,7 +5,8 @@ It implements only the onboarding surface, and each check mirrors HA 2026.10.3
 ``components/websocket_api/auth.py``): the step list and order, the required
 ``users`` fields, single-use auth codes bound to ``client_id``, Bearer auth on
 the later steps, the integration step's redirect-URI check, and the WS auth
-handshake plus ``auth/long_lived_access_token``. The real container is checked
+handshake plus ``auth/long_lived_access_token``, and refresh-token revocation
+(``/auth/token`` ``action=revoke``). The real container is checked
 by V2 on the Pi and by the v0.1 bridge contract tests (HOME_ASSISTANT §13).
 """
 
@@ -42,7 +43,7 @@ class FakeHA:
     access_tokens: set[str] = field(default_factory=set[str])
     refresh_tokens: set[str] = field(default_factory=set[str])
     llats: list[dict[str, object]] = field(default_factory=list[dict[str, object]])
-    core_urls: dict[str, object] = field(default_factory=dict[str, object])
+    revoked_refresh_tokens: set[str] = field(default_factory=set[str])
     requests: list[str] = field(default_factory=list[str])
     #: Answer 503 to this many ``GET /api/onboarding`` calls first (HA still starting).
     not_ready_polls: int = 0
@@ -54,10 +55,14 @@ class FakeHA:
     race_user_step: bool = False
     #: Refuse ``auth/long_lived_access_token`` on a connection authenticated with an LLAT.
     refuse_llat_on_llat: bool = False
+    #: Answer 500 to ``/auth/token`` ``action=revoke``.
+    fail_revoke: bool = False
+    _access_by_refresh: dict[str, set[str]] = field(default_factory=dict[str, set[str]])
 
     def issued_secrets(self) -> list[str]:
         """Every secret value the fake handed out or received."""
         values = [*self.users.values(), *self.access_tokens, *self.refresh_tokens]
+        values += [*self.revoked_refresh_tokens]
         values += [code for (_client, code) in self.auth_codes]
         values += [str(llat["token"]) for llat in self.llats]
         return values
@@ -102,6 +107,16 @@ class FakeHA:
     async def token(self, request: web.Request) -> web.Response:
         self.requests.append("POST /auth/token")
         form = await request.post()
+        if form.get("action") == "revoke" and self.fail_revoke:
+            return web.Response(status=500, text="500: Internal Server Error")
+        if form.get("action") == "revoke":
+            # HA: always 200; a known refresh token is removed with its access tokens.
+            token = str(form.get("token", ""))
+            if token in self.refresh_tokens:
+                self.refresh_tokens.discard(token)
+                self.revoked_refresh_tokens.add(token)
+                self.access_tokens -= self._access_by_refresh.pop(token, set())
+            return web.Response(status=200)
         client_id = str(form.get("client_id", ""))
         if form.get("grant_type") != "authorization_code":
             return web.json_response({"error": "unsupported_grant_type"}, status=400)
@@ -119,6 +134,7 @@ class FakeHA:
         access, refresh = secrets.token_hex(32), secrets.token_hex(32)
         self.access_tokens.add(access)
         self.refresh_tokens.add(refresh)
+        self._access_by_refresh[refresh] = {access}
         return web.json_response(
             {
                 "access_token": access,
@@ -206,9 +222,6 @@ class FakeHA:
             self.access_tokens.discard(str(self.llats[index]["token"]))
             self.llats[index] = {**self.llats[index], "client_name": "<deleted>"}
             return {"id": msg_id, "type": "result", "success": True, "result": {}}
-        if msg["type"] == "config/core/update":
-            self.core_urls.update({k: v for k, v in msg.items() if k not in ("id", "type")})
-            return {"id": msg_id, "type": "result", "success": True, "result": None}
         return _ws_error(msg_id, "unknown_command", "Unknown command.")
 
 

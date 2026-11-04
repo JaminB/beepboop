@@ -49,7 +49,7 @@ The audio container gets `/dev/snd` and talks raw ALSA; no PipeWire or PulseAudi
 
 ### 2.4 Verifying the AEC reference (M0, blocks barge-in)
 
-Seeed does not document the reference routing. `beepboop bench aec` plays a 10 s TTS clip through the array while a speaker at 2 m says the wake word five times, and compares wake-hit rate and STT WER against the same utterances in silence (pass criteria in §15.2). The result is stored as `aec_verified` in the household table, reported in `hello`, and shown on System › Voice.
+Seeed does not document the reference routing. `beepboop bench aec` plays a 10 s TTS clip through the array while a speaker at 2 m says the wake word five times, and compares wake-hit rate and STT WER against the same utterances in silence (pass criteria in §15.2). The result is stored as `aec_verified` in the household table, reported in `hello` and every `health`, and shown on System › Voice.
 
 ---
 
@@ -142,7 +142,7 @@ The gate is [ROADMAP G5](ROADMAP.md#m0-prove-the-pi): ≤ 0.5 false accepts per 
 
 ### 6.4 Training pipeline: `tools/train_wakeword/`
 
-The shipped model is reproducible from this directory; each step is a `make` target with a pinned Python environment, and the README there is the runbook. `make synth` generates ~20 000 positive clips with the Piper sample generator across ≥ 40 voices, speeds 0.8–1.3, pitch shifts and three phoneme spellings (`hˈeɪ bˈiːpbuːp`, `…bˈiːp bˈuːp`, a clipped `…bipbup`). `make augment` convolves with public RIRs, mixes household-like noise (AudioSet subsets, MUSAN) at 0–25 dB SNR and applies the array's measured frequency response (one M0 sweep). `make negatives` downloads microWakeWord's pre-generated negative features plus TTS near-misses ("hey people", "beat loop", "he bumped", "hey, be quick"). `make train` runs microWakeWord's trainer and exports TFLite int8 with a `hey_beepboop_vN.json` (cutoff, window). `make eval` runs §6.3 against the fixtures and fails the build on any missed target. Licenses of every voice, RIR and noise set are listed in `models/LICENSES.md` and checked in CI. The Pi itself never trains.
+The shipped model is reproducible from this directory; each step is a `make` target with a pinned Python environment, and the [README there](../tools/train_wakeword/README.md) is the runbook. `make synth` generates ~20 000 positive clips with the Piper sample generator across ≥ 40 voices, speeds 0.8–1.3 and three phoneme spellings (`hˈeɪ bˈiːpbuːp`, `…bˈiːp bˈuːp`, a clipped `…bipbup`), plus TTS near-misses ("hey people", "beat loop", "he bumped", "hey, be quick") as hard negatives. `make negatives` downloads licence-clean corpora (CC BY, CC0, Apache-2.0: LibriSpeech, Speech Commands, VOiCES, MUSAN, OpenSLR 28, FSD50K filtered to CC0/CC BY clips) and the training step builds its own negative features from them. `make augment` applies pitch shifts (Piper has no pitch control), convolves with public RIRs, mixes household-like noise (MUSAN and the other licence-clean sets; no AudioSet, whose audio has no redistribution licence) at 0–25 dB SNR and applies the array's measured frequency response (one M0 sweep). `make train` runs microWakeWord's trainer; `make export` writes TFLite int8 with a `hey_beepboop_vN.json` (cutoff, window). `make eval` reports false-reject and false-accept *estimates* on held-out synthetic clips and ambient audio and recommends a cutoff; it fails only with `--require-targets`, because the §6.3 targets are G5 numbers that only the soak corpus can produce. microWakeWord's pre-generated negative features are CC BY-NC (CHiME-6, WHAM!) and are used only by `--profile research`, which never exports a shippable model. The licence of every voice, dataset, RIR and noise set lives in [tools/train_wakeword/DATA_LICENSES.md](../tools/train_wakeword/DATA_LICENSES.md) (checked by `train-wakeword check`), and the model's `models/manifest.yaml` attribution points there. The LibriTTS-R generator and several of the voices are fine-tuned from the research-only Blizzard 2013 Lessac voice; the owner accepted that provenance for this personal/research project on 2026-11-03 (D1, [ADR 0020](adr/0020-gpl-3-and-espeak-phonemiser.md)), and a strict profile without them stays documented in the README. The Pi itself never trains.
 
 ### 6.5 False-wake review (v0.2 at the earliest)
 
@@ -179,7 +179,7 @@ The final speaker embedding (§8.2) must be ready at EOS without adding to the b
 
 ### 8.1 Model
 
-CAM++ (WeSpeaker English VoxCeleb, 192-d, 7.18 M params, 1.72 GFLOPs, 0.73 % EER VoxCeleb1-O) through `sherpa_onnx.SpeakerEmbeddingExtractor`, **fp32**, 2 intra-op threads; int8 is the G1 fallback experiment, not the default. The `SpeakerProvider` Protocol (§17) is model-agnostic; `{model_id, model_sha}` is stored with every embedding, and because no audio is kept, **a model change forces re-enrollment**: core marks every voiceprint stale, everyone is identified as Guest until re-enrolled, and the UI explains why and offers the two-minute flow ([ADR 0018](adr/0018-no-audio-retention.md)). Estimated cost for 2 s of audio: 60–130 ms fp32 (scaled from the paper's x86 RTF; **unmeasured**). Gate: ROADMAP G1.
+CAM++ (WeSpeaker English VoxCeleb, 512-d as exported for sherpa-onnx (measured 2026-11-02, [models/LICENSES.md](../models/LICENSES.md)), 7.18 M params, 1.72 GFLOPs, 0.73 % EER VoxCeleb1-O) through `sherpa_onnx.SpeakerEmbeddingExtractor`, **fp32**, 2 intra-op threads; int8 is the G1 fallback experiment, not the default. No int8 CAM++ export exists in the sherpa-onnx releases (`bench speaker` reports `int8: null`), so the experiment starts by making one: onnxruntime dynamic quantization of the pinned fp32 model, recorded in `models/manifest.yaml` as its own entry with its sha256, then the household EER A/B. The `SpeakerProvider` Protocol (§17) is model-agnostic, and the event protocol takes the length from `hello.speaker.dim` rather than fixing it ([ARCHITECTURE §4.4](ARCHITECTURE.md#44-framing-and-validation-rules)); `{model_id, model_sha, dim}` is stored with every embedding, and because no audio is kept, **a model change forces re-enrollment**: core marks every voiceprint stale, everyone is identified as Guest until re-enrolled, and the UI explains why and offers the two-minute flow ([ADR 0018](adr/0018-no-audio-retention.md)). Estimated cost for 2 s of audio: 60–130 ms fp32 (scaled from the paper's x86 RTF; **unmeasured**). Gate: ROADMAP G1.
 
 ### 8.2 Two-stage identification
 
@@ -285,6 +285,8 @@ Audio is fed in 10 ms frames; decoding runs every 100 ms of accumulated audio; `
 
 ### 10.2 Per-profile hotword biasing
 
+**Blocked on a BPE model (M0 finding, 2026-11-03).** sherpa-onnx hotwords for an English BPE transducer need the model's BPE vocabulary (`modeling_unit: bpe` plus `bpe.vocab`, which is generated from `bpe.model`). The pinned `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` archive ships only `tokens.txt`, no `bpe.model`, so biasing cannot be built with it and the hotword WER delta in `bench stt` is **pending**. Before v0.1 one of two fixes is pinned in `models/manifest.yaml`: a small streaming English zipformer export that ships `bpe.model`/`bpe.vocab` (it must still pass G2), or the `bpe.model` from the icefall recipe this export was trained with, as a separate manifest entry with its sha256. Until then the stream runs without hotwords.
+
 Contextual biasing (`hotwords_score: 1.5`, target) with a list rebuilt by core whenever a profile's grants, contacts, lists or timers change, pushed in `profiles.sync`: HA entity and area names the profile can reach (friendly names and aliases), household member names, list names and recent items, timer and alarm labels, and module-declared vocabulary (`manifest.yaml: vocabulary:`). Cap 200 entries per list, phrases ≤ 4 tokens, deduplicated, lower-cased and converted to BPE tokens at build time. The stream is created at `t_wake` with `household ∪ provisional_profile` once `speaker.provisional` is known (if late, the household list alone) and is never recreated mid-utterance.
 
 ### 10.3 Alternative providers (v0.2)
@@ -301,7 +303,7 @@ Contextual biasing (`hotwords_score: 1.5`, target) with a list rebuilt by core w
 
 ### 11.1 Default: Piper voices in sherpa-onnx (`sherpa-piper`)
 
-`sherpa_onnx.OfflineTts` running Piper-format VITS voices (`*.onnx` + `tokens.txt` + `espeak-ng-data`). The piper1 engine itself is GPL-3 and is **not** linked; sherpa-onnx is Apache-2.0. Each voice's license is recorded in `models/LICENSES.md`.
+Pipeline: text → normalise (numbers, units, times) → `piper-phonemize` (espeak-ng, reading the voice's `espeak-ng-data`) → phoneme codepoints → `sherpa_onnx.OfflineTts` running the Piper-format VITS voice (`*.onnx` + `tokens.txt`) via `GenerationConfig.phoneme_codepoints` → PCM. sherpa-onnx ≥ 2.0 has no built-in espeak-ng frontend for Piper voices, so phonemisation happens in beepboop-audio (`beepboop_audio/tts/sherpa_piper/phonemize.py`); `piper-phonemize` 1.5.9 is a pinned audio dependency with cp312 wheels for aarch64, x86_64 and Windows. It wraps espeak-ng (GPL-3.0), which the project's GPL-3.0-or-later licence allows ([ADR 0020](adr/0020-gpl-3-and-espeak-phonemiser.md)); sherpa-onnx is Apache-2.0. Each voice's licence is recorded in `models/LICENSES.md`. The default voice `en_US-lessac-low` is trained on the research-only Blizzard 2013 Lessac corpus; the owner accepted it for this personal/research project on 2026-11-03 (D1); a deployment that needs a clean dataset licence swaps the voice in `models/manifest.yaml`.
 
 | Setting | Default | Notes |
 |---|---|---|
@@ -318,7 +320,7 @@ Number, unit and abbreviation normalization happens in the audio service before 
 
 ### 11.3 Cached clips and earcons
 
-At startup, and whenever a profile's voice or rate changes, the service pre-renders a **clip set** per active voice into `/data/tts-cache/<voice>/<rate>/<sha(text)>.pcm`: every system phrase in §11.6 that has no `{placeholder}`, the short acks "Done.", "OK.", "Sure.", "Cancelled.", "Timer set.", and the claim-code digits 0–9 ([WEB_UI §5.1](WEB_UI.md#51-first-run-onboarding)). The `clip:` vocabulary core may use in `speak` is exactly the system-phrase keys, the acks above (`done`, `ok`, `sure`, `cancelled`, `timer_set`) and the earcon names (§13.1); unknown clips fall back to synthesizing the text. Beyond the fixed set, an LRU of 200 recently synthesized sentences per voice makes repeated answers ("It's 7:30") instant. Entries are PCM16 16 kHz and total well under 50 MB; they are synthesized outputs, not captured audio.
+At startup, and whenever a profile's voice or rate changes, the service pre-renders a **clip set** per active voice into `/data/tts-cache/<voice>/<rate>/<sha(text)>.pcm`: every system phrase in §11.6 that has no `{placeholder}`, the short acks "Done.", "OK.", "Sure.", "Cancelled.", "Timer set.", and the claim-code digits 0–9 ([WEB_UI §5.1](WEB_UI.md#51-first-run-onboarding)). The ack keys are `done`, `ok`, `sure`, `cancelled` and `timer_set`. Which keys `speak{clip}` accepts, and what happens with an unknown one, is defined once in [ARCHITECTURE §4.2](ARCHITECTURE.md#42-event-catalog) (clip keys). Beyond the fixed set, an LRU of 200 recently synthesized sentences per voice makes repeated answers ("It's 7:30") instant. Entries are PCM16 16 kHz and total well under 50 MB; they are synthesized outputs, not captured audio.
 
 ### 11.4 Playback mixer
 
@@ -387,7 +389,7 @@ The default second factor is **Web UI confirm** ([ADR 0014](adr/0014-second-fact
 
 The XVF3800 has an RGB LED ring and a mute button driven through the vendor control interface (`xvf_host` / USB control transfers; the exact path is an M0 verification item). If the ring is unavailable the same states drive a single GPIO LED.
 
-**This table owns the earcon name list.** `earcon.name` in [ARCHITECTURE §4.2](ARCHITECTURE.md#42-event-catalog) and `speak{clip}` accept exactly: `wake`, `ack`, `done`, `prompt`, `cancel`, `error`, `offline`, `pin`, `mute`, `unmute`, `alarm`, `ready`, `too_long`.
+**This table owns the earcon name list.** `earcon.name` in [ARCHITECTURE §4.2](ARCHITECTURE.md#42-event-catalog) accepts exactly these names, which are also valid `speak{clip}` keys (clip-key rules: ARCHITECTURE §4.2): `wake`, `ack`, `done`, `prompt`, `cancel`, `error`, `offline`, `pin`, `mute`, `unmute`, `alarm`, `ready`, `too_long`.
 
 | State / moment | Earcon | LED ring | Single LED |
 |---|---|---|---|
@@ -491,7 +493,7 @@ Fixtures containing household voices are recorded with consent, stored only on t
 
 **This section is the only definition** of `WakeProvider`, `SpeakerProvider`, `SttProvider`, `TtsProvider` and their dataclasses; [ARCHITECTURE §7](ARCHITECTURE.md#7-provider-seams) links here. Providers live in `audio/beepboop_audio/<stage>/<id>/` and are registered by the entry-point groups `beepboop.wake_providers`, `beepboop.speaker_providers`, `beepboop.stt_providers`, `beepboop.tts_providers`. Each declares `id`, `capabilities`, `license` and the model files it needs (resolved through `models/manifest.yaml`). Inference is synchronous on worker threads; the two streaming Protocols are async.
 
-Provider ids: `microwakeword`, `sherpa-campp`, `sherpa-zipformer`, `sherpa-piper` (v0.1); `openwakeword` (plugin); `deepgram`, `polly`, `wyoming` (v0.2). Every provider must pass `audio/tests/conformance/` (load, warm-up, streaming, cancellation mid-stream, locale handling, memory ceiling): `uv run pytest audio/tests/conformance -k <id>`. The step-by-step for adding one is [CLAUDE.md §7.1](../CLAUDE.md).
+Provider ids: `microwakeword`, `sherpa-campp`, `sherpa-zipformer`, `sherpa-piper` (v0.1); `openwakeword` (plugin); `deepgram`, `polly`, `wyoming` (v0.2). Every provider must pass the audio conformance suite (load, warm-up, streaming, cancellation mid-stream, locale handling, memory ceiling), marked `conformance` like the LLM suite: `uv run pytest -m conformance audio/tests -k <id>`. The step-by-step for adding one is [CLAUDE.md §7.1](../CLAUDE.md).
 
 ```python
 # audio/beepboop_audio/types.py

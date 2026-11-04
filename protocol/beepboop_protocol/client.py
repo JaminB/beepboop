@@ -24,10 +24,10 @@ from dataclasses import dataclass, field
 
 import structlog
 
-from beepboop_audio.events.address import SocketAddress, UnixAddress
-from beepboop_audio.events.audio_events import AudioHelloEvent
-from beepboop_audio.events.codec import ProtocolError
-from beepboop_audio.events.connection import (
+from beepboop_protocol.address import SocketAddress, UnixAddress
+from beepboop_protocol.audio_events import AudioHelloEvent
+from beepboop_protocol.codec import ProtocolError
+from beepboop_protocol.connection import (
     ByteDuplex,
     CoreSide,
     StreamDuplex,
@@ -35,7 +35,7 @@ from beepboop_audio.events.connection import (
     core_handshake,
     core_hello,
 )
-from beepboop_audio.events.core_events import CoreHelloEvent
+from beepboop_protocol.core_events import CoreHelloEvent
 
 log = structlog.get_logger(__name__)
 

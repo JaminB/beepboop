@@ -14,10 +14,12 @@ Porcupine's free tier ended 2026-06-30 and it is proprietary, which disqualifies
 
 Wake: microWakeWord via `pymicro-wakeword`, with the stock "Hey beepboop" model produced by a reproducible pipeline in `tools/train_wakeword/` (Piper synthetic clips plus negatives, fine-tuned on household clips SEED-style). openWakeWord is an optional plugin behind the same `WakeProvider` protocol. Speech: sherpa-onnx for Silero VAD, CAM++ (WeSpeaker VoxCeleb, 192-d, fp32 first; int8 only after a household A/B), streaming zipformer transducer (English small) with contextual biasing from per-profile hotwords, and Piper-format VITS voices (low or medium) synthesized sentence by sentence. Kokoro is opt-in. whisper.cpp is the offline-fallback plugin; Moonshine is a plugin after a license check. Every model is listed in `models/manifest.yaml` with its license and downloaded at install.
 
+> **Amended 2026-11-03.** "192-d" above is wrong: both pinned sherpa-onnx English VoxCeleb CAM++ exports produce 512-dimensional embeddings (measured by the M0 bench; [models/LICENSES.md](../../models/LICENSES.md)). The protocol no longer fixes the length; `hello.speaker.dim` carries it ([ADR 0019](0019-shared-protocol-package-and-negotiated-embedding-dim.md)).
+
 ## Consequences
 
 - One runtime to pin, benchmark and understand; one set of thread settings to tune.
-- No GPL code in a beepboop process; per-voice licenses are tracked individually.
+- No GPL code in a beepboop process; per-voice licenses are tracked individually. *(Superseded 2026-11-03 by [ADR 0020](0020-gpl-3-and-espeak-phonemiser.md): the project is GPL-3.0-or-later and `piper-phonemize`/espeak-ng runs in the audio process, because sherpa-onnx 2.x has no built-in espeak frontend. The MIT reasoning in Context and the `piper1-gpl` alternative below are historical.)*
 - A custom wake model "requires a lot of experimentation" per its own README; M0 gate G5 measures false accepts on a soak corpus and the pipeline is documented so it can be regenerated.
 - Model swaps for speaker ID invalidate enrollments; `model_id`/`model_sha` travel with voiceprints.
 
@@ -27,4 +29,4 @@ Wake: microWakeWord via `pymicro-wakeword`, with the stock "Hey beepboop" model 
 - **Porcupine**: proprietary, free tier gone.
 - **ECAPA-TDNN or ResNet34**: 2–3× slower for no accuracy gain.
 - **faster-whisper or whisper.cpp as primary STT**: batch decoding after end-of-speech; too slow for the tail budget.
-- **`piper1-gpl` directly**: GPL.
+- **`piper1-gpl` directly**: GPL. (Since ADR 0020 the licence is no longer a blocker; it stays unadopted because sherpa-onnx already runs the voices.)

@@ -15,7 +15,7 @@ import pytest
 from beepboop.module import ToolError
 from beepboop.testing import fake_context
 
-from ..module import Module, _Parcel, _norm, _replace, _speak_status
+from ..module import Module, _norm, _Parcel, _replace, _speak_status
 
 MODULE_DIR = Path(__file__).resolve().parents[1]
 FROZEN = datetime.fromisoformat("2026-11-01T09:00:00-08:00")
@@ -23,12 +23,15 @@ FROZEN = datetime.fromisoformat("2026-11-01T09:00:00-08:00")
 
 # ---------------------------------------------------------------- handlers with the fake context
 
+
 async def test_track_all_reads_fixture_status():
-    ctx = fake_context(MODULE_DIR, profile="alice")           # settings, secrets, kv, http from evals.yaml fixtures
+    ctx = fake_context(
+        MODULE_DIR, profile="alice"
+    )  # settings, secrets, kv, http from evals.yaml fixtures
     out = await Module().track(ctx)
-    assert "out for delivery" in out["speak"]                 # shoes, from the http fixture
+    assert "out for delivery" in out["speak"]  # shoes, from the http fixture
     assert {p["label"] for p in out["parcels"]} == {"shoes", "headphones", "book"}
-    assert [e for e in ctx.effects if e["kind"] == "http"] == []   # GETs are fixtures, not effects
+    assert [e for e in ctx.effects if e["kind"] == "http"] == []  # GETs are fixtures, not effects
 
 
 async def test_track_by_label_filters():
@@ -67,6 +70,7 @@ async def test_health_without_key_is_error():
 
 
 # ---------------------------------------------------------------- pure helpers
+
 
 def test_norm_strips_spaces_dashes_and_uppercases():
     assert _norm("1z 999-aa1 0123") == "1Z999AA10123"

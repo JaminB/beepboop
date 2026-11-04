@@ -8,6 +8,9 @@ bytes (a unix socket, loopback TCP in dev, or the in-process fake):
 * ``receive`` returns the next known, valid event. Unknown types are skipped
   (debug log), invalid lines are skipped (warning log, field locations only,
   never values), ``seq`` gaps are logged and never fatal (ARCHITECTURE §4.1).
+* Once the handshake has set :attr:`EventChannel.embedding_dim` (from audio's
+  ``hello.speaker.dim``), an event whose embeddings have another length is
+  dropped on receive and refused on send (ARCHITECTURE §4.4, ADR 0019).
 * End of stream raises :class:`ConnectionClosedError`.
 
 Logs name the event ``type``, ``seq`` and ``turn_id`` only, never ``data``:
@@ -22,16 +25,17 @@ from typing import Protocol
 
 import structlog
 
-from beepboop_audio.events.audio_events import AudioEvent, AudioHelloEvent, ErrorData, ErrorEvent
-from beepboop_audio.events.codec import (
+from beepboop_protocol.audio_events import AudioEvent, AudioHelloEvent, ErrorData, ErrorEvent
+from beepboop_protocol.codec import (
+    EventValidationError,
     LineFramer,
     ProtocolError,
     decode_audio_event,
     decode_core_event,
     encode,
 )
-from beepboop_audio.events.core_events import CoreEvent, CoreHelloData, CoreHelloEvent
-from beepboop_audio.events.envelope import PROTOCOL_MAJOR, EventBase
+from beepboop_protocol.core_events import CoreEvent, CoreHelloData, CoreHelloEvent
+from beepboop_protocol.envelope import PROTOCOL_MAJOR, EventBase
 
 log = structlog.get_logger(__name__)
 
@@ -112,6 +116,9 @@ class EventChannel[InT: EventBase, OutT: EventBase]:
         self.peer = peer
         self.seq_gaps = 0
         self.dropped = 0
+        #: Embedding length for this connection (audio's ``hello.speaker.dim``);
+        #: ``None`` until the handshake sets it, and then nothing is checked.
+        self.embedding_dim: int | None = None
 
     @property
     def closed(self) -> bool:
@@ -121,6 +128,7 @@ class EventChannel[InT: EventBase, OutT: EventBase]:
         """Stamp the next ``seq`` on ``event``, write it, return the stamped copy."""
         if self._closed:
             raise ConnectionClosedError("channel is closed")
+        self._check_embeddings(event)
         async with self._send_lock:
             self._seq += 1
             stamped = event.model_copy(update={"seq": self._seq})
@@ -145,6 +153,13 @@ class EventChannel[InT: EventBase, OutT: EventBase]:
                 log.warning("event.dropped", peer=self.peer, reason=str(exc))
                 continue
             if event is None:
+                continue
+            try:
+                self._check_embeddings(event)
+            except EventValidationError as exc:
+                self.dropped += 1
+                log.warning("event.dropped", peer=self.peer, reason=str(exc))
+                self._check_seq(event)
                 continue
             self._check_seq(event)
             log.debug("event.received", type=event.type, seq=event.seq, turn_id=event.turn_id)
@@ -177,6 +192,13 @@ class EventChannel[InT: EventBase, OutT: EventBase]:
                 self._framer.eof()
                 raise ConnectionClosedError("peer closed the connection")
             self._pending.extend(self._framer.feed(data))
+
+    def _check_embeddings(self, event: EventBase) -> None:
+        dim = self.embedding_dim
+        if dim is None:
+            return
+        if any(length != dim for length in event.embedding_lengths()):
+            raise EventValidationError(event.type, [f"embedding length != speaker dim {dim}"])
 
     def _check_seq(self, event: EventBase) -> None:
         last = self._last_rx_seq
@@ -236,6 +258,7 @@ async def audio_handshake(
             )
         )
         raise ProtocolMismatchError(f"core protocol {first.data.protocol} != {PROTOCOL_MAJOR}")
+    channel.embedding_dim = hello.data.speaker.dim
     return first
 
 
@@ -252,6 +275,7 @@ async def core_handshake(
         raise HandshakeError(f"expected hello from audio, got {first.type}")
     if first.data.protocol != PROTOCOL_MAJOR:
         raise ProtocolMismatchError(f"audio protocol {first.data.protocol} != {PROTOCOL_MAJOR}")
+    channel.embedding_dim = first.data.speaker.dim
     return first
 
 

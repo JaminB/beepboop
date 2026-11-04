@@ -137,6 +137,19 @@ def test_resolve_falls_back_to_passphrase(keys_dir: Path, reader: OtpReader) -> 
     assert again == first
 
 
+def test_existing_passphrase_file_wins_over_later_otp(keys_dir: Path) -> None:
+    # D3: the passphrase KEK is the default; programming OTP later must not strand
+    # the keyring that was wrapped under the passphrase KEK.
+    first = resolve_kek(
+        keys_dir, otp_reader=_no_otp, passphrase="pw", create_passphrase_file=True, params=CHEAP
+    )
+    later = resolve_kek(keys_dir, otp_reader=lambda: OTP, passphrase="pw")
+    assert later.kind == "passphrase"
+    assert later == first
+    with pytest.raises(KekUnavailableError, match="exists but no BB_KEK_PASSPHRASE_FILE"):
+        resolve_kek(keys_dir, otp_reader=lambda: OTP, passphrase=None)
+
+
 def test_resolve_without_any_source_fails(keys_dir: Path) -> None:
     with pytest.raises(KekUnavailableError, match="BB_KEK_PASSPHRASE_FILE"):
         resolve_kek(keys_dir, otp_reader=_no_otp, passphrase=None)

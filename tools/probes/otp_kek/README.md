@@ -1,11 +1,12 @@
 # tools/probes/otp_kek: M0 item V5
 
-> Status: **PENDING, owner action** (needs a Pi 4, and for the main check an OTP key you
-> choose to program; that is irreversible).
+> Status: **PENDING, owner action** (needs a Pi 4 without a programmed OTP key). The OTP
+> part is optional and is **skipped for now** (owner decision D3, 2026-11-03).
 
-[ROADMAP V5](../../../docs/ROADMAP.md#m0-prove-the-pi): *the Pi OTP device key is
-readable from the core container via `/dev/vcio` and produces a stable KEK across
-reboots; the passphrase-wrapped fallback works on a board without it.* The design is in
+[ROADMAP V5](../../../docs/ROADMAP.md#m0-prove-the-pi): *the passphrase-wrapped KEK (the
+v0.1 default) works on a Pi; reading the OTP key from the core container is an optional
+later upgrade.* The `fallback` part alone decides V5's status; the `otp` part is recorded
+when run and marked `optional`. The design is in
 [DATA_AND_PRIVACY §6.3](../../../docs/DATA_AND_PRIVACY.md#63-envelope-encryption), and the
 code under test is in [`core/beepboop/secrets/`](../../../core/beepboop/secrets/README.md).
 
@@ -14,8 +15,8 @@ code under test is in [`core/beepboop/secrets/`](../../../core/beepboop/secrets/
 
 | Part | PASS when |
 |---|---|
-| `otp` | A programmed key was read on **≥ 2 different boots** (kernel `boot_id`), with the **same KEK fingerprint** each time and the same device salt, and **at least one read happened inside a container** with `/dev/vcio` mapped. A changed fingerprint, or a `--cross-check` mismatch with `vcmailbox`, is a FAIL. |
-| `fallback` | Create, reload, wrong-passphrase rejection and a `SecretStore` round trip all work, on a board **without** a programmed OTP key. |
+| `otp` (optional, D3) | A programmed key was read on **≥ 2 different boots** (kernel `boot_id`), with the **same KEK fingerprint** each time and the same device salt, and **at least one read happened inside a container** with `/dev/vcio` mapped. A changed fingerprint, or a `--cross-check` mismatch with `vcmailbox`, is a FAIL. |
+| `fallback` (decides V5) | Create, reload, wrong-passphrase rejection and a `SecretStore` round trip all work, on a board **without** a programmed OTP key. |
 
 The key and the KEK are never printed or stored. Only `sha256("beepboop/kek-fingerprint" ‖ KEK)[:16]`
 is recorded. Errors (no `/dev/vcio`, permission denied, mailbox locked) are recorded
@@ -30,8 +31,11 @@ the doc with the error the probe recorded.
    `uv run python tools/probes/otp_kek/probe_v5.py read` should then show
    `otp_programmed: false`. If the key is already programmed, run `fallback` on a
    second board that has none, such as the 8 GB Pi.
-2. **Decide on the OTP key (irreversible).** OTP bits can never be cleared. The
-   beepboop installer will do this step itself later; for M0 you do it by hand.
+That is all V5 needs under D3. Steps 2–6 are the **optional** OTP upgrade; skip them
+unless you decide to program the key.
+
+2. **Optional: decide on the OTP key (irreversible).** OTP bits can never be cleared. The
+   beepboop installer does not do this (D3); it is a manual owner choice.
    Raspberry Pi's firmware expects a P-256 private scalar, so follow their tool:
    ```bash
    sudo rpi-otp-private-key -c && echo "already programmed" || echo "blank"
