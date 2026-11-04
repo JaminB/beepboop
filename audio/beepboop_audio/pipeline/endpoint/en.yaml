@@ -1,0 +1,21 @@
+# Adaptive-hangover vocabulary for English (VOICE_PIPELINE §7.2).
+# When the last stt.partial ends in one of these words (or a number), the hangover
+# grows from 250 ms to 400 ms so "set a timer for… [pause] ten minutes" is not cut.
+function_words:
+  - a
+  - an
+  - and
+  - at
+  - by
+  - for
+  - from
+  - in
+  - into
+  - my
+  - of
+  - on
+  - or
+  - the
+  - to
+  - until
+  - with

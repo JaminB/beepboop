@@ -1,0 +1,21 @@
+# Build context for deploy/docker/*.Dockerfile (repo root). Keep it small and secret-free.
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.hypothesis
+**/node_modules
+ui/build
+ui/.svelte-kit
+models/*
+!models/manifest.yaml
+!models/LICENSES.md
+tools/bench/corpus
+tools/bench/results
+tools/train_wakeword
+docs/research
+.git
+**/.env
+**/.env.*
+!deploy/.env.example

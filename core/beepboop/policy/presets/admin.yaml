@@ -1,0 +1,6 @@
+# IDENTITY_AND_TRUST §9. Web-UI role 'admin' is a property of kind, not a grant.
+kind: admin
+risk_ceiling: critical
+groups: [household, adults]
+grants:
+  - {resource: "tool_glob:*", max_risk: critical}

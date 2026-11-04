@@ -19,6 +19,8 @@ from typing import Any
 
 from beepboop.module import (
     Health,
+    HttpClient,
+    HttpResponse,
     ToolContext,
     ToolError,
     tool,
@@ -53,11 +55,14 @@ class _Parcel:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> _Parcel:
+        eta = d.get("eta")
         return cls(
-            **{
-                k: d.get(k)
-                for k in ("tracking_number", "carrier", "label", "status", "eta", "last_update")
-            }
+            tracking_number=str(d.get("tracking_number", "")),
+            carrier=str(d.get("carrier", "unknown")),
+            label=str(d.get("label", "")),
+            status=str(d.get("status", "unknown")),
+            eta=str(eta) if eta is not None else None,
+            last_update=str(d.get("last_update", "")),
         )
 
 
@@ -69,7 +74,7 @@ class _CarrierClient:
 
     BASE = "https://api.example-carrier.test/v1"
 
-    def __init__(self, http, api_key: str) -> None:
+    def __init__(self, http: HttpClient, api_key: str) -> None:
         self._http = http
         self._headers = {"Authorization": f"Bearer {api_key}"}
 
@@ -78,7 +83,8 @@ class _CarrierClient:
             f"{self.BASE}/detect", params={"n": tracking_number}, headers=self._headers
         )
         self._raise_for_auth(r)
-        return (r.json().get("carrier") or "unknown").lower()
+        data: dict[str, Any] = r.json() or {}
+        return str(data.get("carrier") or "unknown").lower()
 
     async def status(self, tracking_number: str, carrier: str) -> dict[str, Any]:
         r = await self._http.get(
@@ -101,10 +107,11 @@ class _CarrierClient:
             raise ToolError(
                 "The carrier service is unavailable right now.", code="unavailable", retryable=True
             )
-        return r.json()
+        data: dict[str, Any] = r.json() or {}
+        return data
 
     @staticmethod
-    def _raise_for_auth(r) -> None:
+    def _raise_for_auth(r: HttpResponse) -> None:
         if r.status_code in (401, 403):
             # code="reauth" also flips this integration's health so the UI shows "reconnect"
             raise ToolError(

@@ -116,6 +116,8 @@ def resolve_models(manifest: Manifest, root: Path) -> ModelSet:
     for entry in manifest.models:
         if not is_installed(entry, root):
             continue
+        if entry.kind == "stt" and "tokens" not in entry.files:
+            continue  # a companion file (the zipformer's bpe.model), not a recognizer
         ids[entry.kind if entry.kind != "tts" else f"tts:{entry.id}"] = entry.id
         if entry.kind == "speaker":
             speaker = entry.install_path(root)

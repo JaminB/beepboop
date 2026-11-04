@@ -27,15 +27,15 @@ Related: [README.md](../README.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [IDE
 
 | Concern | Pick | Notes |
 |---|---|---|
-| Framework | SvelteKit 3.1 + Svelte 5 (runes), `@sveltejs/adapter-static` 4.0, `fallback: 'index.html'` | Pure SPA. No Node in production. |
+| Framework | SvelteKit 3.1 + Svelte 5 (runes), `@sveltejs/adapter-static` 4.0, `fallback: 'index.html'` | Pure SPA. No Node in production. Kit 3 reads its config from `ui/vite.config.ts`; `src/lib` is imported as `#lib/*` (package subpath imports). |
 | Serving | FastAPI `StaticFiles(html=True)` at `/`, `index.html` fallback for every non-`/api`, non-`/mcp`, non-`/auth` path | Hashed assets `Cache-Control: public, max-age=31536000, immutable`; `index.html` `no-cache`. |
 | Components | Bits UI headless primitives + our own CSS tokens (`--bb-*`) | No utility-class framework. No chart library: waterfall and similarity grid are HTML/CSS. |
 | API client | `openapi-typescript` + `openapi-fetch`, generated from `/api/openapi.json` into `ui/src/lib/api/` | CI runs `pnpm --dir ui gen:api` and fails on diff. |
 | Live data | Server-Sent Events at `/api/events` | One stream per session, filtered by §6.4. |
 | Forms | `SchemaForm.svelte`: the JSON Schema subset in [MODULES.md §6.1](MODULES.md#61-supported-json-schema-subset) → form | Module settings, profile settings, System tabs, onboarding (§9). |
-| i18n | Paraglide JS, compile-time messages in `ui/messages/<locale>.json` | English only in v0.1; keys from day one (§10). |
+| i18n | Compile-time messages in `ui/messages/<locale>.json` through a typed `t(key)` (`ui/src/lib/i18n.ts`): a missing key fails `pnpm check`; ICU `{n, plural, …}` and `{name}` only | English only in v0.1; keys from day one (§10). Paraglide JS replaces the helper, same files and keys, when a second locale lands. |
 | Build size | ≤ 250 kB gzipped JS, first paint < 1 s on a mid-range phone over Wi-Fi | Target, enforced as a CI bundle budget. |
-| Security headers | CSP `default-src 'self'; img-src 'self' data:; connect-src 'self'` (`csp.mode: 'hash'`), `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `Permissions-Policy: microphone=()` | The browser never gets microphone access: enrolment uses the Pi's mic (§5.3). |
+| Security headers | CSP `default-src 'self'; img-src 'self' data:; connect-src 'self'` (`csp.mode: 'hash'`, written by SvelteKit as a `<meta>` in the static shell, so its script hashes match; `style-src` adds `'unsafe-hashes'` for exactly one hash, the inline style of SvelteKit's route announcer, and Playwright fails on any CSP violation), plus HTTP headers from FastAPI on every response: `Content-Security-Policy: frame-ancestors 'none'` (a meta tag cannot carry it), `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `Permissions-Policy: microphone=()` | The browser never gets microphone access: enrolment uses the Pi's mic (§5.3). |
 
 The `ui/` tree is part of the repository layout in [CLAUDE.md §3](../CLAUDE.md#3-repository-layout). `pnpm --dir ui build` is the only Node step; it runs on the developer machine or in CI, never on the Pi, and the output is copied into the `beepboop-core` image.
 
@@ -169,7 +169,7 @@ Wizard steps (resumable; reopens at the first incomplete step until done):
 
 The recommended choice writes `ha_area` grants for `household` at each domain's default risk and grants critical-domain entities to `adults`; "one by one" sends every entity to the inbox (§5.5). Either way it is an explicit admin decision and default-deny is unchanged.
 
-**Finish screen**, in order: the **Recovery kit** (one printable page with the 10 TOTP recovery codes and the backup recovery key, plus an "I saved it" tick), a **practice approval** (add-to-home-screen hint plus *Try it*, which makes the device say "This is a practice. Approve it on your phone." and raises a no-op approval through the real banner path), and "Say *Hey beepboop, what can you do?*". The certificate banner (§4) stays until the CA is trusted; nothing blocks on it.
+**Finish screen**, in order: the **Recovery kit** (one printable page with the 10 TOTP recovery codes and the backup recovery key, plus an "I saved it" tick), a **practice approval** (add-to-home-screen hint plus *Try it*, which makes the device say "This is a practice. Approve it on your phone." and raises a no-op approval through the real banner path: `POST /api/approvals/practice`; nothing executes it), and "Say *Hey beepboop, what can you do?*". The certificate banner (§4) stays until the CA is trusted; nothing blocks on it.
 
 ### 5.1b Accepting an invite
 
@@ -356,7 +356,7 @@ Access is a tab on the person page; the inbox lives under the Home Assistant car
 ```
 
 - **Cards** come straight from `manifest.yaml` (`summary`, `scope` badge, aggregated status); no per-module UI code.
-- **Settings forms** are `SchemaForm` over `manifest.settings` (§9): one form for `household` scope (admins); for `profile` scope the same page shows *Your connection* for the signed-in person (admins: per person). `x-per-profile` fields appear under *Your settings* here; the person page only links.
+- **Settings forms** are `SchemaForm` over `manifest.settings` (§9): one form for `household` scope (admins); for `profile` scope the same page shows *Your connection* for the signed-in person (admins: per person). `x-per-profile` fields appear under *Your settings* here; the person page only links. The heading is the manifest `title` ("Calendar"); the id, scope and category sit under *Details*. `x-entity` fields are a select over the entities granted to the signed-in person (`GET /api/integrations/<id>/entities?domains=`). The **Setup guide** fold shows the module's `SETUP.md`. Clearing a secret is a confirm dialog whose button names the secret ("Clear App password").
 - **Test and save** saves, then calls `Module.health(ctx)` (a real read-only call) and shows `Health.detail` inline; there is no separate test hook. Status words are `Health.status` ([MODULES.md §5.1](MODULES.md#51-module-base-class-and-hooks)) plus `off` for a disabled integration (a UI state, not a Health value).
 - **Connect flows** in v0.1 are credential forms. v0.2 invariant: the HA data-entry-flow renderer and OAuth via the bounce page reuse this card, status model and *Your connection* placement ([MODULES.md §8](MODULES.md#8-oauth-v02-invariants-that-bind-v01)).
 - **Home Assistant card** owns the inbox (§5.5) and links to HA's own UI through the admin-gated Caddy route (§5.11). **Persona** is a module like any other; the Profile tab's selector points at its settings form.
@@ -391,7 +391,7 @@ The approval record, state machine, expiry and nonce rules are owned by [IDENTIT
 
 - The page shows only approvals whose `profile_id` equals the session's profile. Admins cannot approve for others; the device said *your* phone.
 - **One tap, no dialog, no hold.** The primary button names the effect; the friction is the page itself. *Don't unlock* records `denied` with no speaker-ID effect. The quieter *That wasn't me* link also denies and records a misattribution per [VOICE_PIPELINE.md §8.8](VOICE_PIPELINE.md#88-that-wasnt-me).
-- Approve is `POST /api/approvals/{id}/approve {nonce}`, the nonce having arrived in the SSE `approval` event; a second tap gets `409`. If a login for the approval's profile succeeds while it is live, `exp` extends once to 120 s and the device speaks "still waiting".
+- Approve is `POST /api/approvals/{id}/approve {nonce}`, the nonce having arrived in the SSE `approval` event; a second tap gets `409`. If a login for the approval's profile succeeds, or one of its sessions opens the approvals stream (`/api/events`), while it is live, `exp` extends once to 120 s and the device speaks "still waiting". The nonce is stored only as a hash, so core keeps the plaintext in memory until the decision or `exp` and replays it to that profile's (re)connecting streams; the polling fallback never carries it.
 - **Transport**: SSE is primary; while the page is visible the UI also polls `GET /api/approvals?state=pending` every 10 s in case the stream is reconnecting. Nothing polls in the background.
 - The device speaks the outcome ("Unlocked.", or that it was denied or expired); the approval appears in Activity with its `factor`. If the profile has a PIN, whichever factor arrives first wins and the page says "approved by PIN" if the voice path won.
 - The phone's own lock screen is the barrier against someone else approving from an open session: an accepted residual risk (§6.2) in exchange for a 30-day session.
@@ -501,7 +501,7 @@ The ledger is derived, not a separate log: counts come from `turns`, `voiceprint
 
 ### 5.11 System
 
-Tabs: **Health · LLM · Voice · Backups · Updates · HTTPS · Logs**. Admin only (members see Health).
+Tabs: **Health · LLM · Voice · Backups · Updates · HTTPS · Logs**. Admin only (members see Health). On **Voice** the household thresholds and "ask on phone when unsure" are editable (`PATCH /api/system/voice`, audited; a person's own calibration from enrolment still overrides them, [VOICE_PIPELINE §8.4](VOICE_PIPELINE.md#84-accept-rule-and-per-tier-thresholds)); the wake-word sensitivity is shown from `/config/beepboop.yaml` and not editable here in v0.1, because provider configuration reaches the audio service only as that mounted file (CLAUDE.md hard rule 4). "Who's talking" lists people who sound alike once the enrolment similarity check exists (a v0.1 gap, [ROADMAP](ROADMAP.md#v01-one-house-that-knows-your-voice)).
 
 ```
 ┌──────────────────────────────────────┐   ┌──────────────────────────────────────┐
@@ -557,7 +557,7 @@ Tabs: **Health · LLM · Voice · Backups · Updates · HTTPS · Logs**. Admin o
 | Factor | Implementation | Notes |
 |---|---|---|
 | Password | argon2id `m=64 MiB, t=3, p=1` (target ≈300 ms on a Pi 4, validated in M0), `logins.pw_hash` | Min 12 characters, no composition rules, common-password list. |
-| TOTP | `pyotp`, SHA-1, 6 digits, 30 s step, ±1 drift, secret encrypted at rest, last-used counter blocks replay | **Required** for admin and member logins at every tier; optional for a child. |
+| TOTP | RFC 6238 on the standard library's `hmac` (`beepboop.api.security`), SHA-1, 6 digits, 30 s step, ±1 drift, secret encrypted at rest, last-used counter blocks replay. Replacing the secret (`POST /api/auth/totp`) re-authenticates: the current password plus the current code or a recovery code, so a stolen or unattended session cannot swap the factor; changing the password signs out every other session. | **Required** for admin and member logins at every tier; optional for a child. |
 | Recovery codes | 10 × 8-char, hashed, single-use | In the Recovery kit (§5.1); the only credential the post-onboarding claim session accepts. |
 | Claim code | 6 digits, spoken + blinked, 15 min, 5 attempts | Only path to the first admin (§5.1). |
 | Invite | 32-byte token in a link/QR, 24 h, single-use | Creates a login for an existing profile (§5.1b). |
@@ -572,7 +572,7 @@ Rate limits: 5 failed logins per username per 15 min → exponential backoff and
 - Idle timeout 30 days (renewed on use), absolute 90 days; "Sign out everywhere" deletes all rows for the profile. The long session is what makes a 60-second approval realistic; the phone's lock screen is the accepted residual barrier.
 - Cross-site top-level navigations do not carry a `Strict` cookie, so the SPA shell loads without one and then calls `/api/me` same-origin, which does; this is why the shell is static and the approve page works from any link.
 - CSRF: non-GET `/api` requires `Sec-Fetch-Site: same-origin` **and** `Origin` exactly equal to `BB_PUBLIC_URL`; `same-site` is rejected. No CSRF tokens.
-- The `claim` session (§5.1) is a separate cookie `__Host-bb_claim` scoped to `/api/onboarding`, 15 min, deleted when the admin is created.
+- The `claim` session (§5.1) is a separate cookie `__Host-bb_claim`, 15 min, deleted when the admin is created. `__Host-` forces `Path=/`, so the scoping is server-side: only `/api/onboarding/*` accepts it, and no other dependency reads it.
 
 ### 6.3 Authorisation in the API
 
@@ -629,12 +629,14 @@ One API, `/api`, served by FastAPI, documented at `/api/openapi.json` (and `/api
 
 **SSE: `GET /api/events`** (`text/event-stream`, `Last-Event-ID` resume, `: ping` every 15 s). Each event is filtered by §6.4 before it is written; a member's stream never carries another adult's `turn` events.
 
+**Fake core for UI work.** `python -m beepboop.api.devserver [--seed]` serves the built SPA and the real `/api` (routers, policy, approvals) over a temporary SQLite file, plus a dev-only `/api/_dev` router (`voice`, `speech`, `clock`, `claim`) that plays the device. It is never part of `create_app` or the OpenAPI document; Playwright (`pnpm --dir ui test:e2e`) runs the onboarding and approval flows against it.
+
 ```
 event: turn            data: {"id","profile_id","state":"listening|thinking|speaking|done|error","transcript?","reply_delta?","tool_call?"}
 event: approval        data: {"id","nonce","summary","tool","exp","state":"pending|approved|denied|expired","factor?"}
 event: inbox           data: {"count"}
 event: device          data: {"state":"idle|listening|thinking|speaking|muted|pin|error|offline","last_speaker?"}
-event: enroll          data: {"session_id","step","clip_quality":{"snr","clipping","speech_ratio","duration_ms"},"accepted":bool}
+event: enroll          data: {"session_id","step","clip_quality":{"snr","clipping","speech_ratio","duration_ms"},"accepted":bool,"progress","total","done"}
 event: health          data: {"temp_c","throttled","ram":{...},"ha":"ok|down","llm":"ok|down"}
 event: update          data: {"phase":"snapshot|pull|health|rollback|done","detail"}
 ```

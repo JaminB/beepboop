@@ -4,3 +4,6 @@
 *.tflite binary
 *.png binary
 *.jpg binary
+
+# iCalendar/CalDAV fixtures keep CRLF per RFC 5545
+modules/caldav/tests/fixtures/** -text

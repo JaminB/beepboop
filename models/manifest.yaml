@@ -43,6 +43,17 @@ models:
     source: https://github.com/k2-fsa/sherpa-onnx
     notes: "The small streaming English model of VOICE_PIPELINE §10.1; int8 encoder/decoder/joiner are the default, fp32 ships in the same archive. The archive also carries test_wavs/ (LibriSpeech, CC-BY-4.0)."
 
+  - id: icefall-librispeech-bpe-500
+    kind: stt
+    url: https://huggingface.co/desh2608/icefall-asr-librispeech-pruned-transducer-stateless7-streaming-small/resolve/be162ecc09bade73063a671fad9d18220149d25b/data/lang_bpe_500/bpe.model
+    sha256: c53433de083c4a6ad12d034550ef22de68cec62c4f58932a7b6b8b2f1e743fa5
+    size: 244865
+    dest: stt/icefall-librispeech-bpe-500/bpe.model
+    license: Apache-2.0
+    attribution: "icefall LibriSpeech lang_bpe_500 SentencePiece (unigram) model, from the training repo of the 20M streaming zipformer export (desh2608, Apache-2.0)"
+    source: https://huggingface.co/desh2608/icefall-asr-librispeech-pruned-transducer-stateless7-streaming-small
+    notes: "The bpe.model the pinned zipformer was trained with (its 500 pieces equal the export's tokens.txt; tested in audio/tests). Enables per-profile hotwords (VOICE_PIPELINE §10.2): beepboop-audio renders the bpe.vocab text from it at recognizer load. Pinned to repo commit be162ecc; sha256 recorded from the download on 2026-11-04."
+
   - id: silero-vad
     kind: vad
     url: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx

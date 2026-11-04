@@ -5,6 +5,8 @@ tests and `beepboop module check` see the same world. Pure helpers are tested wi
 Run with plain `pytest`; no Pi, HA, mic or LLM key needed.
 """
 
+# Pure helpers are tested directly (MODULES §12.4), so private names are imported on purpose.
+# pyright: reportPrivateUsage=false
 from __future__ import annotations
 
 from datetime import datetime

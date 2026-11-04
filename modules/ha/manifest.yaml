@@ -1,0 +1,227 @@
+# The `ha` module: home control through the policy-wrapped Home Assistant client.
+# Contract: docs/MODULES.md §4; tool shapes: docs/MCP.md §4.1-§4.5; HA mechanics:
+# docs/HOME_ASSISTANT.md. Core owns the WebSocket, state cache, registry index, resolver,
+# UUID grants and the new-device inbox (core/beepboop/ha/); this folder holds only the
+# five intent tools. Allowlisted (MODULES §4.7): namespaces `home` and `media`, deferred: false.
+
+id: ha
+api: 1
+version: 0.1.0
+summary: "Control and check lights, switches, climate, covers, locks and media players in the home."
+scope: household
+category: home
+locales: [en]
+license: GPL-3.0-or-later
+keywords: [light, lamp, switch, fan, thermostat, temperature, blinds, lock, door, tv, speaker, volume]
+
+requires:
+  core: ">=0.1,<1"
+  ha: {}
+
+tools:
+  - name: home.turn_on
+    description: >-
+      Turn on lights, switches, fans, media players, open covers, lock a lock, or activate a
+      scene or script by name or room. Use for "turn on", "switch on", "lights on in", "open the
+      blinds", "lock the front door", "activate the movie scene". Pass the name exactly as spoken;
+      the server resolves it. For brightness, color or temperature use home.set instead.
+    risk: act
+    untrusted_output: false
+    deferred: false
+    idempotent: true
+    timeout_ms: 2000
+    args: &target_args
+      type: object
+      properties:
+        target:
+          type: object
+          description: "The device or room as the user said it; the server resolves names."
+          properties:
+            name: {type: string, description: "Name as spoken, e.g. 'kitchen lights'."}
+            area: {type: string, description: "Room, if said separately."}
+            domain:
+              type: string
+              enum: [light, switch, fan, cover, climate, media_player, lock, scene, script, vacuum, humidifier, water_heater]
+              description: "Device type for generic names."
+            all: {type: boolean, description: "'everything', 'all the lights'."}
+          additionalProperties: false
+      required: [target]
+      additionalProperties: false
+    output: &switch_output
+      type: object
+      properties:
+        speak: {type: string}
+        status: {type: string, enum: [ok, partial, needs_clarification, none_matched]}
+        affected: {type: array, items: {type: string}}
+        candidates: {type: array, items: {type: string}, description: "Present when status=needs_clarification"}
+      required: [speak, status]
+    examples:
+      - utterance: "turn on the kitchen lights"
+        args: {target: {name: "kitchen lights"}}
+      - utterance: "activate the movie scene"
+        args: {target: {name: "movie", domain: scene}}
+
+  - name: home.turn_off
+    description: >-
+      Turn off lights, switches, fans, media players, close covers, unlock a lock, or stop a
+      vacuum by name or room. Use for "turn off", "switch off", "kill the lights", "close the
+      blinds", "everything off in the kitchen". Unlocking always needs the person's approval.
+      Same targeting as home.turn_on.
+    risk: act
+    untrusted_output: false
+    deferred: false
+    idempotent: true
+    timeout_ms: 2000
+    args: *target_args
+    output: *switch_output
+    examples:
+      - utterance: "turn off the kitchen lights"
+        args: {target: {name: "kitchen lights"}}
+      - utterance: "everything off in the living room"
+        args: {target: {area: "living room", all: true}}
+
+  - name: home.set
+    description: >-
+      Set one attribute on a device: brightness, color, color temperature, thermostat target or
+      mode, fan speed, cover position, volume, preset. Use for "dim to 30 percent", "make it
+      warmer", "open the blinds halfway". Relative changes use delta.
+    risk: act
+    untrusted_output: false
+    deferred: false
+    idempotent: false
+    timeout_ms: 2000
+    args:
+      type: object
+      properties:
+        target:
+          type: object
+          description: "The device or room as said; the server resolves names."
+          properties:
+            name: {type: string, description: "Name as spoken, e.g. 'bedroom lamp'."}
+            area: {type: string, description: "Room, if said separately."}
+            domain: {type: string, description: "Device type for generic names, e.g. climate."}
+          additionalProperties: false
+        attribute:
+          type: string
+          enum: [brightness, color, color_temp, temperature, hvac_mode, fan_speed, position, volume, preset]
+          description: "Which attribute to change."
+        value:
+          type: [number, string]
+          description: "Absolute: 0-100 percent, degrees, a color name or hex, or an hvac mode."
+        delta:
+          type: number
+          description: "Relative change instead of value: -20 'dimmer', 2 'two degrees warmer'."
+      required: [target, attribute]
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        status: {type: string, enum: [ok, partial, needs_clarification, none_matched, unsupported]}
+        affected: {type: array, items: {type: string}}
+        new_value: {type: [number, string, "null"]}
+      required: [speak, status]
+    examples:
+      - utterance: "kitchen lights to fifty percent"
+        args: {target: {name: "kitchen lights"}, attribute: brightness, value: 50}
+      - utterance: "make it two degrees warmer in the living room"
+        args: {target: {area: "living room", domain: climate}, attribute: temperature, delta: 2}
+
+  - name: home.state
+    description: >-
+      Report the current state of devices or sensors by name or room: on or off, brightness,
+      temperature, humidity, lock state, open or closed. Use for "is the garage closed", "what's
+      the temperature upstairs", "are any lights on". With no target, returns a short snapshot of
+      the home. Returns only devices this person can see.
+    risk: read
+    untrusted_output: false
+    deferred: false
+    idempotent: true
+    timeout_ms: 1000
+    args:
+      type: object
+      properties:
+        target:
+          type: object
+          description: "The device or room asked about. Omit for a home snapshot."
+          properties:
+            name: {type: string, description: "Name as spoken, e.g. 'front door'."}
+            area: {type: string, description: "Room, e.g. 'bedroom'."}
+            domain: {type: string, description: "Device type for generic names, e.g. light, sensor."}
+            all: {type: boolean, description: "'are any lights on'."}
+          additionalProperties: false
+        attribute:
+          type: string
+          enum: [brightness, color_temp, temperature, current_temperature, humidity, hvac_mode, hvac_action, volume, muted, battery, position, percentage]
+          description: "Optional typed attribute to read, e.g. temperature, humidity, battery."
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        status: {type: string, enum: [ok, needs_clarification, none_matched]}
+        stale: {type: boolean, description: "True when Home Assistant is unreachable and the values are the last known ones."}
+        entities:
+          type: array
+          items:
+            type: object
+            properties:
+              name: {type: string}
+              area: {type: [string, "null"]}
+              state: {type: string}
+              attributes: {type: object}
+              last_changed: {type: [string, "null"]}
+        candidates: {type: array, items: {type: string}}
+      required: [speak, status]
+    examples:
+      - utterance: "is the front door locked"
+        args: {target: {name: "front door"}}
+      - utterance: "what's the temperature in the bedroom"
+        args: {target: {area: "bedroom", name: "temperature"}}
+
+  - name: media.control
+    description: >-
+      Control playback on a media player or speaker: play, pause, stop, next, previous, mute,
+      unmute, volume up, down or set. Use for "pause", "skip this", "volume down in the kitchen",
+      "mute the tv". With no target it uses the player that is playing. To choose what to play,
+      use music.play instead.
+    risk: act
+    untrusted_output: false
+    deferred: false
+    idempotent: false
+    timeout_ms: 2000
+    args:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [play, pause, stop, next, previous, mute, unmute, volume_up, volume_down, volume_set]
+          description: "What to do."
+        target:
+          type: object
+          description: "Player or room. Omit for the player that is playing."
+          properties:
+            name: {type: string, description: "Player as spoken, e.g. 'the tv'."}
+            area: {type: string, description: "Room, e.g. 'kitchen'."}
+            all: {type: boolean, description: "'everywhere'."}
+          additionalProperties: false
+        volume:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Volume percent, only for volume_set."
+      required: [action]
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        status: {type: string, enum: [ok, needs_clarification, none_matched, nothing_playing]}
+        player: {type: [string, "null"]}
+        candidates: {type: array, items: {type: string}}
+      required: [speak, status]
+    examples:
+      - utterance: "pause"
+        args: {action: pause}
+      - utterance: "turn the volume down in the kitchen"
+        args: {action: volume_down, target: {area: "kitchen"}}

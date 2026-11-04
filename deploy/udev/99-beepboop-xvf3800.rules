@@ -1,0 +1,6 @@
+# /etc/udev/rules.d/99-beepboop-xvf3800.rules (OPERATIONS §2 step 7)
+# Gives the ReSpeaker XVF3800 a stable ALSA card id (hw:XVF3800) and audio-group access.
+# USB vendor 0x2886 is Seeed Studio. The product id is not pinned here because the 16 kHz
+# USB firmware variants differ; pending on Pi: record `lsusb` output in deploy/firmware.lock.
+SUBSYSTEM=="sound", KERNEL=="card*", ATTRS{idVendor}=="2886", ATTRS{product}=="*XVF3800*", ATTR{id}="XVF3800"
+SUBSYSTEM=="sound", ATTRS{idVendor}=="2886", GROUP="audio", MODE="0660"

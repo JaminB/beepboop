@@ -1,0 +1,6 @@
+# IDENTITY_AND_TRUST §9. Identical to admin except for kind.
+kind: member
+risk_ceiling: critical
+groups: [household, adults]
+grants:
+  - {resource: "tool_glob:*", max_risk: critical}

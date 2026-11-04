@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 import tarfile
 import urllib.request
 from pathlib import Path
@@ -49,7 +50,11 @@ def test_checked_in_manifest_is_valid_and_pinned() -> None:
     assert kinds == {"speaker", "stt", "vad", "tts", "wake"}
     for entry in manifest.models:
         if entry.status == "pinned":
-            assert entry.url.startswith("https://github.com/k2-fsa/sherpa-onnx/releases/download/")
+            # sherpa-onnx release assets, or a Hugging Face file pinned to a commit
+            # (the zipformer's bpe.model, VOICE_PIPELINE §10.2).
+            assert entry.url.startswith(
+                "https://github.com/k2-fsa/sherpa-onnx/releases/download/"
+            ) or re.match(r"^https://huggingface\.co/[^/]+/[^/]+/resolve/[0-9a-f]{40}/", entry.url)
             assert len(entry.sha256) == 64
             assert entry.size is not None
             assert entry.size > 0

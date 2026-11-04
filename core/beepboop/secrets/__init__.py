@@ -11,8 +11,10 @@ Layers, bottom up:
 Typical use::
 
     kek = resolve_kek(keys_dir, otp_reader=read_otp_key, passphrase=None)
-    async with await SecretStore.open(db_path, kek) as store:
-        await store.put(SecretRef("ha_long_lived_token"), token)
+    store = await SecretStore.attach(db, kek)        # core: the single-writer Database
+    await store.put(SecretRef("ha_long_lived_token"), token)
+
+``SecretStore.open(path, kek)`` opens a standalone file instead (probes, tools).
 """
 
 from beepboop.secrets.envelope import DecryptionError, EnvelopeError
@@ -28,7 +30,15 @@ from beepboop.secrets.kek import (
     resolve_kek,
 )
 from beepboop.secrets.otp import OtpUnavailableError, read_otp_key
-from beepboop.secrets.store import KekMismatchError, SecretNotFoundError, SecretRef, SecretStore
+from beepboop.secrets.store import (
+    KekMismatchError,
+    SecretNotFoundError,
+    SecretRef,
+    SecretStore,
+    export_deks,
+    import_deks,
+    keyring_empty,
+)
 
 __all__ = [
     "Argon2Params",
@@ -43,6 +53,9 @@ __all__ = [
     "SecretStore",
     "create_passphrase_kek",
     "derive_otp_kek",
+    "export_deks",
+    "import_deks",
+    "keyring_empty",
     "load_device_salt",
     "load_passphrase_kek",
     "read_otp_key",

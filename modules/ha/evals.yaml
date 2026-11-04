@@ -1,0 +1,240 @@
+# evals.yaml for the ha module (docs/MODULES.md §12).
+# Offline (every PR): the policy decision per case uses the real resolver and the same
+# tool → service table as core's target extractor over fixtures.ha.states, so locks, garage
+# covers and scenes raise the tier exactly as they do live. The handler then runs in
+# dry-run against the same fixtures and its ctx.ha.call_service effects are compared.
+
+api: 1
+module: ha
+freeze_time: "2026-11-01T19:00:00-08:00"
+
+fixtures:
+  ha:
+    states:
+      - {entity_id: light.kitchen_lights, uuid: "01HAKITCHENLIGHTS", name: "Kitchen lights", area_id: kitchen, state: "on", attributes: {brightness: 204}}
+      - {entity_id: light.bedroom_lamp, uuid: "01HABEDROOMLAMP", name: "Bedroom lamp", area_id: bedroom, state: "off"}
+      - {entity_id: lock.front_door, uuid: "01HAFRONTDOOR", name: "Front door", area_id: hall, state: locked}
+      - {entity_id: cover.garage_door, uuid: "01HAGARAGEDOOR", name: "Garage door", area_id: garage, device_class: garage, state: closed}
+      - {entity_id: cover.living_blinds, uuid: "01HALIVINGBLINDS", name: "Living blinds", area_id: living, state: open, attributes: {current_position: 100}}
+      - {entity_id: climate.thermostat, uuid: "01HATHERMOSTAT", name: "Thermostat", area_id: living, state: heat, attributes: {temperature: 20, current_temperature: 19.5}}
+      - {entity_id: media_player.kitchen_speaker, uuid: "01HAKITCHENSPEAKER", name: "Kitchen speaker", area_id: kitchen, state: playing, attributes: {volume_level: 0.4}}
+      - {entity_id: media_player.tv, uuid: "01HATV", name: "TV", area_id: living, device_class: tv, state: "off"}
+      - {entity_id: scene.movie, uuid: "01HASCENEMOVIE", name: "Movie", state: "2026-10-31T20:00:00+00:00"}
+      - {entity_id: sensor.bedroom_temperature, uuid: "01HABEDROOMTEMP", name: "Bedroom temperature", area_id: bedroom, state: "21.5", attributes: {unit_of_measurement: "°C", device_class: temperature}}
+
+cases:
+  # ---- home.turn_on
+  - id: kitchen_lights_on
+    utterance: "turn on the kitchen lights"
+    profile: member
+    expect:
+      tool: home.turn_on
+      args: {target: {name: "kitchen lights"}}
+      effects:
+        - {kind: ha, domain: light, service: turn_on, targets: ["01HAKITCHENLIGHTS"]}
+      speak_contains: ["on"]
+
+  - id: child_locks_front_door
+    utterance: "lock the front door"
+    profile: child
+    expect:
+      tool: home.turn_on
+      args: {target: {name: "front door"}}
+      effects:
+        - {kind: ha, domain: lock, service: lock, targets: ["01HAFRONTDOOR"]}
+      speak_contains: ["locked"]
+
+  - id: movie_scene_needs_approval
+    utterance: "activate the movie scene"
+    profile: member
+    expect:
+      tool: home.turn_on
+      args: {target: {name: "movie", domain: scene}}
+      confirm: true            # scenes are indirect services: critical until dispositioned
+
+  - id: child_cannot_open_garage
+    utterance: "open the garage door"
+    profile: child
+    expect:
+      tool: home.turn_on
+      args: {target: {name: "garage door"}}
+      denied: true             # cover with device_class garage is critical; Child ceiling is act
+
+  # ---- home.turn_off
+  - id: kitchen_lights_off
+    utterance: "turn off the kitchen lights"
+    profile: member
+    expect:
+      tool: home.turn_off
+      args: {target: {name: "kitchen lights"}}
+      effects:
+        - {kind: ha, domain: light, service: turn_off, targets: ["01HAKITCHENLIGHTS"]}
+      speak_contains: ["off"]
+
+  - id: bedroom_lights_off_by_area
+    utterance: "turn off the lights in the bedroom"
+    profile: admin
+    expect:
+      tool: home.turn_off
+      args: {target: {area: "bedroom", domain: light}}
+      effects:
+        - {kind: ha, domain: light, service: turn_off, targets: ["01HABEDROOMLAMP"]}
+
+  - id: adult_unlock_needs_approval
+    utterance: "unlock the front door"
+    profile: member
+    expect:
+      tool: home.turn_off
+      args: {target: {name: "front door"}}
+      confirm: true            # lock.unlock is critical: always the second factor
+
+  - id: child_cannot_unlock
+    utterance: "unlock the front door"
+    profile: child
+    expect:
+      tool: home.turn_off
+      args: {target: {name: "front door"}}
+      denied: true
+
+  - id: low_confidence_voice_denied
+    utterance: "turn off the kitchen lights"
+    profile: member
+    voice: {confidence: 0.40, margin: 0.05}
+    expect:
+      tool: home.turn_off
+      args: {target: {name: "kitchen lights"}}
+      denied: true             # act needs an identified speaker (identity)
+
+  # ---- home.set
+  - id: kitchen_brightness
+    utterance: "kitchen lights to fifty percent"
+    profile: member
+    expect:
+      tool: home.set
+      args: {target: {name: "kitchen lights"}, attribute: brightness, value: 50}
+      effects:
+        - {kind: ha, domain: light, service: turn_on, targets: ["01HAKITCHENLIGHTS"], data: {brightness_pct: 50}}
+      speak_contains: ["50%"]
+
+  - id: thermostat_absolute
+    utterance: "set the thermostat to 22"
+    profile: admin
+    expect:
+      tool: home.set
+      args: {target: {name: "thermostat"}, attribute: temperature, value: 22}
+      effects:
+        - {kind: ha, domain: climate, service: set_temperature, targets: ["01HATHERMOSTAT"], data: {temperature: 22.0}}
+
+  - id: thermostat_clamped
+    utterance: "set the thermostat to 30"
+    profile: member
+    expect:
+      tool: home.set
+      args: {target: {name: "thermostat"}, attribute: temperature, value: 30}
+      effects:
+        - {kind: ha, domain: climate, service: set_temperature, data: {temperature: 25.0}}
+      speak_contains: ["25"]
+
+  - id: child_volume_capped
+    utterance: "turn the kitchen speaker up to a hundred"
+    profile: child
+    expect:
+      tool: home.set
+      args: {target: {name: "kitchen speaker"}, attribute: volume, value: 100}
+      effects:
+        - {kind: ha, domain: media_player, service: volume_set, data: {volume_level: 0.7}}
+
+  - id: child_cannot_open_garage_halfway
+    utterance: "open the garage door halfway"
+    profile: child
+    expect:
+      tool: home.set
+      args: {target: {name: "garage door"}, attribute: position, value: 50}
+      denied: true
+
+  # ---- home.state
+  - id: is_front_door_locked
+    utterance: "is the front door locked"
+    profile: guest
+    expect:
+      tool: home.state
+      args: {target: {name: "front door"}}
+      effects: []
+      speak_contains: ["locked"]
+
+  - id: bedroom_temperature
+    utterance: "what's the temperature in the bedroom"
+    profile: member
+    expect:
+      tool: home.state
+      args: {target: {area: "bedroom", name: "temperature"}}
+      effects: []
+      speak_contains: ["21.5"]
+
+  - id: house_snapshot
+    utterance: "what's going on at home"
+    profile: admin
+    expect:
+      tool: home.state
+      args: {}
+      effects: []
+      speak_contains: ["devices"]
+
+  - id: garage_state_is_read_tier
+    utterance: "is the garage door closed"
+    profile: child
+    expect:
+      tool: home.state
+      args: {target: {name: "garage door"}}
+      speak_contains: ["closed"]   # reading a critical device is still read tier
+
+  # ---- media.control
+  - id: pause_playing_player
+    utterance: "pause"
+    profile: member
+    expect:
+      tool: media.control
+      args: {action: pause}
+      effects:
+        - {kind: ha, domain: media_player, service: media_pause, targets: ["01HAKITCHENSPEAKER"]}
+      speak_contains: ["Paused"]
+
+  - id: mute_tv
+    utterance: "mute the tv"
+    profile: child
+    expect:
+      tool: media.control
+      args: {action: mute, target: {name: "tv"}}
+      effects:
+        - {kind: ha, domain: media_player, service: volume_mute, targets: ["01HATV"], data: {is_volume_muted: true}}
+
+  - id: kitchen_volume_down
+    utterance: "volume down in the kitchen"
+    profile: member
+    expect:
+      tool: media.control
+      args: {action: volume_down, target: {area: "kitchen"}}
+      effects:
+        - {kind: ha, domain: media_player, service: volume_down, targets: ["01HAKITCHENSPEAKER"]}
+
+  - id: child_volume_set_capped
+    utterance: "set the volume to 100"
+    profile: child
+    expect:
+      tool: media.control
+      args: {action: volume_set, volume: 100}
+      effects:
+        - {kind: ha, domain: media_player, service: volume_set, data: {volume_level: 0.7}}
+
+  # ---- negative cases: not this module
+  - id: timer_is_not_home
+    utterance: "set a timer for ten minutes"
+    profile: member
+    expect:
+      tool: null
+
+  - id: play_music_is_not_media_control
+    utterance: "play some jazz in the kitchen"
+    profile: member
+    expect:
+      tool: music.play

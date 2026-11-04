@@ -1,0 +1,12 @@
+# IDENTITY_AND_TRUST §9. personal and critical are structurally unreachable (ceiling act).
+kind: child
+risk_ceiling: act
+groups: [household, children]
+grants:
+  - {resource: "tool_glob:home.*", max_risk: act}
+  - {resource: "tool_glob:media.*", max_risk: act}
+  - {resource: "tool_glob:timer.*", max_risk: act}
+  - {resource: "tool_glob:list.*", max_risk: act}
+  - {resource: "tool_glob:weather.*", max_risk: read}
+  - {resource: "tool_glob:find_tools", max_risk: read}
+  - {resource: "tool_glob:read_guide", max_risk: read}

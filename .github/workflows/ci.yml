@@ -40,9 +40,13 @@ jobs:
         run: uv run --frozen pyright -p tools/train_wakeword
       - name: pytest
         run: uv run --frozen pytest
+      - name: module check --all (lint L1-L18, token budgets, evals offline; MODULES §13)
+        run: uv run --frozen beepboop module check --all
+      - name: models/LICENSES.md is generated from the manifest and every licence is allowed (OPERATIONS §13)
+        run: uv run --frozen python -m beepboop_bench.models licenses --check
 
   repo-checks:
-    name: doc links, import ban
+    name: doc links, import ban, shellcheck
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -54,6 +58,58 @@ jobs:
         run: python tools/ci/linkcheck.py
       - name: Module import ban (CLAUDE.md hard rule 2)
         run: python tools/ci/import_ban.py
+      - name: shellcheck every shipped shell script (CLAUDE.md §10; shellcheck is on the runner image)
+        run: shellcheck --version && shellcheck deploy/install.sh deploy/bin/beepboop tools/probes/*/*.sh
+
+  ui:
+    # WEB_UI: SvelteKit static SPA, typed client from the OpenAPI document, vitest + Playwright
+    # (claim-code onboarding, enrollment, pending-approval confirm). Steps skip until ui/ exists.
+    name: ui build, vitest, Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        if: hashFiles('ui/package.json') != ''
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: hashFiles('ui/package.json') != ''
+        with:
+          package_json_file: ui/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: hashFiles('ui/package.json') != ''
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - name: Install workspace and ui dependencies from their lockfiles
+        if: hashFiles('ui/package.json') != ''
+        run: uv sync --all-packages --frozen && pnpm --dir ui install --frozen-lockfile
+      - name: OpenAPI document matches the API (WEB_UI §8)
+        if: hashFiles('ui/package.json') != ''
+        run: uv run --frozen beepboop api openapi --out ui/openapi.json --check
+      - name: Generated API client matches the OpenAPI document (WEB_UI §2)
+        if: hashFiles('ui/package.json') != ''
+        run: pnpm --dir ui gen:api && git diff --exit-code ui/src/lib/api/schema.d.ts
+      - name: svelte-check (TS strict; a missing message key is a type error)
+        if: hashFiles('ui/package.json') != ''
+        run: pnpm --dir ui check
+      - name: Build the static SPA
+        if: hashFiles('ui/package.json') != ''
+        run: pnpm --dir ui build
+      - name: vitest
+        if: hashFiles('ui/package.json') != ''
+        run: pnpm --dir ui exec vitest run
+      - name: Playwright (chromium)
+        if: hashFiles('ui/playwright.config.ts') != ''
+        run: pnpm --dir ui exec playwright install --with-deps chromium && pnpm --dir ui exec playwright test
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure() && hashFiles('ui/playwright.config.ts') != ''
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: ui/playwright-report
 
   bench-synthetic:
     # M0 step 6: the stage benchmarks end-to-end on x86 with TTS-generated clips.
@@ -86,3 +142,36 @@ jobs:
         with:
           name: bench-synthetic-${{ github.run_id }}
           path: bench-synthetic.json
+
+  bench-pi:
+    # ROADMAP v0.1 acceptance 2 (CI publishes the waterfall) and 8 (no audio bytes on disk,
+    # scanned on the Pi runner), CLAUDE.md §10 "Bench on real Pi". Runs only on pushes to
+    # main and on maintainer-labelled PRs (never on fork pull_request), on an ephemeral
+    # self-hosted Pi 4 runner in an isolated VLAN with no HA tokens. PENDING ON PI: the
+    # owner registers the runner (labels: self-hosted, linux, ARM64, pi4) before this job
+    # ever runs; until then it is skipped and no gate result exists.
+    name: bench on the Pi (self-hosted, pending the owner's runner)
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'bench-pi'))
+    runs-on: [self-hosted, linux, ARM64, pi4]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install workspace from uv.lock
+        run: uv sync --all-packages --frozen
+      - name: Verify the pinned models already on the runner (no network fetch on the Pi)
+        run: uv run --frozen python -m beepboop_bench.models verify --root /srv/beepboop/models
+      - name: bench all --gates (M0 gates G1-G7; ROADMAP owns the thresholds)
+        run: uv run --frozen beepboop bench all --gates --json > tools/bench/results/ci-${{ github.run_id }}.json
+      - name: No audio bytes on disk after the run (ROADMAP v0.1 acceptance 8)
+        run: python tools/ci/no_audio_on_disk.py /srv/beepboop /data
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: bench-pi-waterfall-${{ github.run_id }}
+          path: tools/bench/results/ci-${{ github.run_id }}.json

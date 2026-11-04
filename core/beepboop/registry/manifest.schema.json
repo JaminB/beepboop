@@ -1,0 +1,446 @@
+{
+  "$defs": {
+    "Egress": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data"
+        },
+        "destination": {
+          "minLength": 1,
+          "title": "Destination",
+          "type": "string"
+        },
+        "purpose": {
+          "minLength": 1,
+          "title": "Purpose",
+          "type": "string"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "When"
+        }
+      },
+      "required": [
+        "destination",
+        "purpose"
+      ],
+      "title": "Egress",
+      "type": "object"
+    },
+    "HARequirement": {
+      "additionalProperties": false,
+      "properties": {
+        "domains": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Domains",
+          "type": "array"
+        },
+        "integrations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Integrations",
+          "type": "array"
+        }
+      },
+      "title": "HARequirement",
+      "type": "object"
+    },
+    "JsonSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "PromptBlockSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "max_tokens": {
+          "maximum": 600,
+          "minimum": 1,
+          "title": "Max Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_tokens"
+      ],
+      "title": "PromptBlockSpec",
+      "type": "object"
+    },
+    "Requires": {
+      "additionalProperties": false,
+      "properties": {
+        "core": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Core"
+        },
+        "ha": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HARequirement"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "python": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Python",
+          "type": "array"
+        }
+      },
+      "title": "Requires",
+      "type": "object"
+    },
+    "SecretSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "kind": {
+          "default": "user",
+          "enum": [
+            "user",
+            "oauth"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SecretSpec",
+      "type": "object"
+    },
+    "ToolExample": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "utterance": {
+          "minLength": 1,
+          "title": "Utterance",
+          "type": "string"
+        }
+      },
+      "required": [
+        "utterance"
+      ],
+      "title": "ToolExample",
+      "type": "object"
+    },
+    "ToolSpec": {
+      "additionalProperties": false,
+      "description": "One ``tools[]`` entry (\u00a74.5).",
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/JsonSchema"
+        },
+        "deferred": {
+          "default": true,
+          "title": "Deferred",
+          "type": "boolean"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "examples": {
+          "items": {
+            "$ref": "#/$defs/ToolExample"
+          },
+          "title": "Examples",
+          "type": "array"
+        },
+        "idempotent": {
+          "default": false,
+          "title": "Idempotent",
+          "type": "boolean"
+        },
+        "name": {
+          "pattern": "^(?:[a-z][a-z0-9_]*\\.)?[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "output": {
+          "$ref": "#/$defs/JsonSchema"
+        },
+        "risk": {
+          "enum": [
+            "read",
+            "act",
+            "personal",
+            "critical"
+          ],
+          "title": "Risk",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "default": 4000,
+          "maximum": 60000,
+          "minimum": 100,
+          "title": "Timeout Ms",
+          "type": "integer"
+        },
+        "untrusted_output": {
+          "title": "Untrusted Output",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "risk",
+        "untrusted_output",
+        "args",
+        "output"
+      ],
+      "title": "ToolSpec",
+      "type": "object"
+    }
+  },
+  "$id": "https://beepboop.dev/schemas/manifest-api1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "``manifest.yaml`` (\u00a74.1).",
+  "properties": {
+    "api": {
+      "const": 1,
+      "title": "Api",
+      "type": "integer"
+    },
+    "category": {
+      "enum": [
+        "home",
+        "media",
+        "productivity",
+        "information",
+        "communication",
+        "persona",
+        "system"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "egress": {
+      "items": {
+        "$ref": "#/$defs/Egress"
+      },
+      "title": "Egress",
+      "type": "array"
+    },
+    "homepage": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Homepage"
+    },
+    "id": {
+      "pattern": "^[a-z][a-z0-9_]{1,31}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "keywords": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 12,
+      "title": "Keywords",
+      "type": "array"
+    },
+    "license": {
+      "default": "GPL-3.0-or-later",
+      "title": "License",
+      "type": "string"
+    },
+    "locales": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Locales",
+      "type": "array"
+    },
+    "oauth": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Oauth"
+    },
+    "prompt_block": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PromptBlockSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "requires": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Requires"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "scope": {
+      "enum": [
+        "household",
+        "profile"
+      ],
+      "title": "Scope",
+      "type": "string"
+    },
+    "secrets": {
+      "items": {
+        "$ref": "#/$defs/SecretSpec"
+      },
+      "title": "Secrets",
+      "type": "array"
+    },
+    "settings": {
+      "$ref": "#/$defs/JsonSchema"
+    },
+    "spoken_name": {
+      "anyOf": [
+        {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Spoken Name"
+    },
+    "summary": {
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "title": {
+      "anyOf": [
+        {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Title"
+    },
+    "tools": {
+      "items": {
+        "$ref": "#/$defs/ToolSpec"
+      },
+      "title": "Tools",
+      "type": "array"
+    },
+    "version": {
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "api",
+    "version",
+    "summary",
+    "scope",
+    "category"
+  ],
+  "title": "Manifest",
+  "type": "object"
+}

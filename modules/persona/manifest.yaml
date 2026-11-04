@@ -1,0 +1,103 @@
+# persona: the household's assistant personality plus each person's voice, rate and
+# verbosity (docs/MODULES.md §5.6, §16). The prompt block lands before the cachePoint, so it
+# is deterministic per (profile, settings, the person's own overrides).
+
+id: persona
+api: 1
+version: 0.1.0
+summary: "Adjusts how I speak to each person: speed, length of answers and voice."
+scope: household
+category: persona
+locales: [en]
+license: GPL-3.0-or-later
+keywords: [persona, slower, faster, brief, chatty, voice, speak, talk, personality, shorter]
+
+requires:
+  core: ">=0.1,<1"
+
+prompt_block:
+  max_tokens: 300
+
+settings:
+  type: object
+  properties:
+    name:
+      type: string
+      title: Assistant name
+      description: "What the household calls the assistant in conversation. The wake word stays 'Hey beepboop'."
+      maxLength: 32
+      default: beepboop
+      x-order: 1
+    style:
+      type: string
+      title: Personality
+      enum: [warm, calm, playful, matter_of_fact]
+      x-enum-labels: {warm: "Warm and friendly", calm: "Calm and gentle", playful: "Playful", matter_of_fact: "Matter-of-fact"}
+      default: warm
+      x-order: 2
+    verbosity:
+      type: string
+      title: Answer length
+      enum: [brief, normal, chatty]
+      x-enum-labels: {brief: "Brief", normal: "Normal", chatty: "Chatty"}
+      default: normal
+      x-per-profile: true
+      x-order: 3
+    voice:
+      type: string
+      title: Voice
+      description: "Text-to-speech voice id from the installed voices (System › Voice)."
+      maxLength: 64
+      default: en_US-lessac-low
+      x-per-profile: true
+      x-order: 4
+    speech_rate:
+      type: number
+      title: Speaking speed
+      minimum: 0.7
+      maximum: 1.4
+      multipleOf: 0.1
+      default: 1.0
+      x-per-profile: true
+      x-order: 5
+  required: []
+
+tools:
+  - name: persona.set
+    description: >-
+      Change how the assistant speaks to the current speaker only: slower or faster speech, or
+      briefer or chattier answers. Use for "speak slower", "talk faster", "be more brief", "you
+      can give me more detail", "go back to normal". Other people are not affected.
+    risk: act
+    untrusted_output: false
+    idempotent: false
+    timeout_ms: 2000
+    args:
+      type: object
+      properties:
+        speech_rate:
+          type: string
+          enum: [slower, faster, normal]
+          description: "slower or faster by one step; normal returns to the household speed."
+        verbosity:
+          type: string
+          enum: [brief, normal, chatty]
+          description: "brief for shorter answers, chatty for more detail, normal for the household default."
+        reset:
+          type: boolean
+          default: false
+          description: "True to drop all of the speaker's own changes ('go back to normal')."
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        speech_rate: {type: number}
+        verbosity: {type: string, enum: [brief, normal, chatty]}
+        voice: {type: string}
+      required: [speak, speech_rate, verbosity]
+    examples:
+      - utterance: "speak slower"
+        args: {speech_rate: slower}
+      - utterance: "keep your answers short"
+        args: {verbosity: brief}

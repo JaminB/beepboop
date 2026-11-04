@@ -1,0 +1,94 @@
+# caldav: the person's own CalDAV calendar (docs/MODULES.md §4.8 is the reference copy).
+# Native and per-profile: HA has no per-person calendar accounts (MODULES §2).
+
+id: caldav
+api: 1
+version: 0.1.0
+summary: "Read and add events on the user's own CalDAV calendar."
+scope: profile
+category: productivity
+locales: [en]
+license: GPL-3.0-or-later
+keywords: [calendar, agenda, appointment, meeting, schedule, event, nextcloud, fastmail, icloud]
+requires:
+  core: ">=0.1,<1"
+egress:
+  - destination: "setting:url"        # the host of the user's CalDAV URL, nothing else
+    purpose: "Read and write your own calendar."
+settings:
+  type: object
+  properties:
+    url:
+      type: string
+      format: uri
+      title: CalDAV URL
+      description: "Server or principal URL, e.g. https://cloud.example.com/remote.php/dav"
+    calendar:
+      type: string
+      title: Calendar
+      description: "Calendar name to read and write. Leave blank for the default calendar."
+      default: ""
+    lookahead_days:
+      type: integer
+      title: Default lookahead
+      description: "How far ahead a search with no dates looks, e.g. 'when is my next dentist appointment'."
+      minimum: 1
+      maximum: 30
+      default: 7
+      x-advanced: true
+  required: [url]
+secrets:
+  - name: username
+    title: Username
+  - name: app_password
+    title: App password
+    description: "Create an app-specific password; never use your main password."
+tools:
+  - name: caldav.events
+    description: >-
+      List the user's upcoming calendar events in a time range. Use for "what's on my calendar",
+      "am I free Thursday", "when is my next meeting". Defaults to today when no range is given.
+    risk: personal
+    untrusted_output: true
+    idempotent: true
+    args:
+      type: object
+      properties:
+        start: {type: string, format: date-time, description: "Range start, ISO 8601 in the user's timezone. Default: now."}
+        end:   {type: string, format: date-time, description: "Range end. Default: end of today."}
+        query: {type: string, description: "Optional case-insensitive text filter on event titles."}
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak:  {type: string}
+        events: {type: array, items: {type: object, properties: {title: {type: string}, start: {type: string}, end: {type: string}, location: {type: [string, "null"]}, all_day: {type: boolean}}}}
+      required: [speak, events]
+    examples:
+      - utterance: "what's on my calendar tomorrow"
+        args: {start: "2026-11-02T00:00:00-08:00", end: "2026-11-02T23:59:59-08:00"}
+  - name: caldav.create
+    description: >-
+      Create a calendar event on the user's own calendar. Use when the user says "add", "schedule",
+      "put on my calendar". Requires a title and a start time; ask for a time if the user gave none.
+    risk: personal
+    untrusted_output: false
+    args:
+      type: object
+      properties:
+        title:    {type: string, description: "Event title as the user phrased it."}
+        start:    {type: string, format: date-time, description: "Start, ISO 8601 with offset."}
+        end:      {type: string, format: date-time, description: "End. Default: start + 1 hour."}
+        all_day:  {type: boolean, description: "True for date-only events.", default: false}
+        location: {type: string, description: "Optional location text."}
+      required: [title, start]
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        uid:   {type: string}
+      required: [speak, uid]
+    examples:
+      - utterance: "put dentist on my calendar Friday at 3"
+        args: {title: "Dentist", start: "2026-11-06T15:00:00-08:00"}

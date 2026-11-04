@@ -1,0 +1,95 @@
+# music: Music Assistant through Home Assistant (docs/HOME_ASSISTANT.md §12, MODULES §16).
+# HA-backed (`requires.ha`), household scope: the speakers are shared hardware granted like any
+# device; each person's default speaker is an `x-per-profile` setting (MODULES §6.3).
+
+id: music
+api: 1
+version: 0.1.0
+summary: "Play music on the house speakers through Music Assistant."
+scope: household
+category: media
+locales: [en]
+license: GPL-3.0-or-later
+keywords: [music, play, song, album, artist, playlist, radio, listen, speaker, track, band]
+requires:
+  core: ">=0.1,<1"
+  ha:
+    domains: [media_player]
+    integrations: [music_assistant]
+settings:
+  type: object
+  properties:
+    default_player:
+      type: string
+      title: Default speaker
+      description: "Where music plays when no room is named. Each person may pick their own."
+      x-entity: {domains: [media_player]}
+      x-per-profile: true
+      default: ""
+  required: []
+tools:
+  - name: music.play
+    description: >-
+      Play music on a house speaker through Music Assistant: a song, artist, album, playlist
+      or radio station. Use for "play some jazz", "play Abbey Road in the kitchen", "put on my
+      running playlist". Without a room it plays on the person's default speaker.
+    risk: act
+    untrusted_output: false
+    timeout_ms: 4000
+    args:
+      type: object
+      properties:
+        query: {type: string, description: "What to play, as the user said it."}
+        media_type: {type: string, enum: [track, album, artist, playlist, radio], description: "Only when the user made the kind clear."}
+        player: {type: string, description: "Room or speaker name if the user said one; otherwise omit."}
+        enqueue: {type: string, enum: [play, replace, next, add], description: "Omit to play now; next, add or replace for the queue."}
+        radio_mode: {type: boolean, description: "True for 'songs like…'.", default: false}
+      required: [query]
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        player: {type: string}
+        media_id: {type: string}
+        media_type: {type: [string, "null"]}
+      required: [speak, player, media_id]
+    examples:
+      - utterance: "play some Queen"
+        args: {query: "Queen", media_type: "artist"}
+      - utterance: "play jazz radio in the living room"
+        args: {query: "jazz", media_type: "radio", player: "living room"}
+
+  - name: music.now_playing
+    description: >-
+      Say what music is playing on the house speakers: title, artist and album. Use for
+      "what's playing", "what song is this", "who sings this". Without a room it reports
+      every speaker that is playing or paused.
+    risk: read
+    untrusted_output: true          # track titles and artist names come from streaming services
+    idempotent: true
+    args:
+      type: object
+      properties:
+        player: {type: string, description: "Room or speaker name if the user said one; otherwise omit."}
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        players:
+          type: array
+          items:
+            type: object
+            properties:
+              player: {type: string}
+              state: {type: string}
+              title: {type: [string, "null"]}
+              artist: {type: [string, "null"]}
+              album: {type: [string, "null"]}
+      required: [speak, players]
+    examples:
+      - utterance: "what's playing"
+        args: {}
+      - utterance: "what's playing in the kitchen"
+        args: {player: "kitchen"}

@@ -1,0 +1,109 @@
+# weather: current conditions and forecast from a granted Home Assistant weather entity.
+# The worked HA-backed example (docs/MODULES.md §5.7). No API key, no egress: Home
+# Assistant's weather integration (Met.no by default) holds the provider connection.
+
+id: weather
+api: 1
+version: 0.1.0
+summary: "Current conditions and forecast for the home."
+scope: household
+category: information
+locales: [en]
+license: GPL-3.0-or-later
+keywords: [weather, forecast, temperature, rain, snow, wind, sunny, cold, hot, umbrella, outside]
+
+requires:
+  core: ">=0.1,<1"
+  ha:
+    domains: [weather]
+
+settings:
+  type: object
+  properties:
+    entity:
+      type: string
+      title: Weather source
+      description: "The Home Assistant weather entity to use. Empty: the first one shared with beepboop."
+      x-entity: {domains: [weather]}
+    units:
+      type: string
+      title: Units
+      description: "How temperatures and wind are spoken."
+      enum: [metric, imperial]
+      x-enum-labels: {metric: "Celsius, km/h", imperial: "Fahrenheit, mph"}
+      default: metric
+      x-per-profile: true
+  required: []
+
+tools:
+  - name: weather.current
+    description: >-
+      Report the current weather at home: condition, temperature, feels-like, humidity and wind.
+      Use for "what's the weather", "is it cold outside", "do I need a jacket", "how hot is it".
+    risk: read
+    untrusted_output: false
+    idempotent: true
+    timeout_ms: 2000
+    args:
+      type: object
+      properties: {}
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        condition: {type: string}
+        temperature: {type: [number, "null"]}
+        feels_like: {type: [number, "null"]}
+        humidity: {type: [number, "null"]}
+        wind_speed: {type: [number, "null"]}
+        units: {type: string, enum: [metric, imperial]}
+      required: [speak, condition, units]
+    examples:
+      - utterance: "what's the weather"
+        args: {}
+
+  - name: weather.forecast
+    description: >-
+      Report the forecast for the coming days: condition, high, low and chance of rain. Use for
+      "what's the weather tomorrow", "will it rain this weekend", "forecast for the week". Give
+      date for a specific day; omit it for the next few days.
+    risk: read
+    untrusted_output: false
+    idempotent: true
+    timeout_ms: 2000
+    args:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: "First day wanted, YYYY-MM-DD in the household's time zone. Omit to start today."
+        days:
+          type: integer
+          minimum: 1
+          maximum: 7
+          default: 3
+          description: "How many days from date; 1 for a single day, 2 for a weekend."
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        days:
+          type: array
+          items:
+            type: object
+            properties:
+              date: {type: string}
+              condition: {type: string}
+              high: {type: [number, "null"]}
+              low: {type: [number, "null"]}
+              precipitation_probability: {type: [number, "null"]}
+        units: {type: string, enum: [metric, imperial]}
+      required: [speak, days, units]
+    examples:
+      - utterance: "what's the weather tomorrow"
+        args: {date: "2026-11-02", days: 1}
+      - utterance: "forecast for the week"
+        args: {days: 7}

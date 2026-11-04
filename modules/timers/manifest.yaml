@@ -1,0 +1,149 @@
+# timers: countdown timers, alarms and reminders for the speaker (docs/MODULES.md §16).
+# Native, household-scoped module; per-person state lives in profile-scoped ctx.kv.
+# Tool schemas are the ones in docs/MCP.md §4.6-§4.8 (the always-loaded core tools).
+
+id: timers
+api: 1
+version: 0.1.0
+summary: "Set, list and cancel the speaker's own timers, alarms and reminders; they ring on the device."
+scope: household
+category: productivity
+locales: [en]
+license: GPL-3.0-or-later
+keywords: [timer, alarm, reminder, countdown, wake, remind, minutes, ring, snooze]
+
+# Native: HA timers have no owner, and beepboop's timers must be per person and survive
+# restarts (docs/HOME_ASSISTANT.md "timer.* not used").
+requires:
+  core: ">=0.1,<1"
+
+settings:
+  type: object
+  properties: {}
+
+tools:
+  - name: timer.set
+    description: >-
+      Set a countdown timer, an alarm at a clock time, or a reminder with a message. Use for
+      "set a timer for 10 minutes", "wake me at 6:30", "remind me to call mom at 3", "remind me
+      in an hour to check the oven". Timers belong to the speaker and ring on this device.
+    risk: act
+    untrusted_output: false
+    deferred: false
+    idempotent: false
+    timeout_ms: 2000
+    args:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [timer, alarm, reminder]
+          description: "timer = duration; alarm = clock time, no message; reminder = clock time or duration with a message."
+        duration_s:
+          type: integer
+          minimum: 1
+          maximum: 86400
+          description: "Seconds from now. Use for timers and 'in X minutes' reminders."
+        at:
+          type: string
+          format: date-time
+          description: "Absolute time, ISO 8601 with offset. Use for alarms and 'at 3pm' reminders. Next occurrence if the time already passed today."
+        label:
+          type: string
+          maxLength: 80
+          description: "Short name or the reminder message: 'pasta', 'call mom'."
+        repeat:
+          type: string
+          enum: [none, daily, weekdays, weekends]
+          default: none
+          description: "Repeat a clock-time alarm or reminder. Only with at."
+      required: [kind]
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        id: {type: string}
+        fires_at: {type: string, description: "ISO 8601 in the speaker's time zone"}
+        kind: {type: string}
+        label: {type: [string, "null"]}
+      required: [speak, id, fires_at]
+    examples:
+      - utterance: "set a timer for ten minutes"
+        args: {kind: timer, duration_s: 600}
+      - utterance: "remind me in an hour to check the oven"
+        args: {kind: reminder, duration_s: 3600, label: "check the oven"}
+
+  - name: timer.list
+    description: >-
+      List the speaker's active timers, alarms and reminders with time remaining. Use for
+      "how long is left", "what alarms do I have", "do I have a timer running".
+    risk: read
+    untrusted_output: false
+    deferred: false
+    idempotent: true
+    timeout_ms: 2000
+    args:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [timer, alarm, reminder, all]
+          default: all
+          description: "Only this kind; default all."
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: string}
+              kind: {type: string}
+              label: {type: [string, "null"]}
+              fires_at: {type: string}
+              remaining_s: {type: integer}
+              repeat: {type: string}
+      required: [speak, items]
+    examples:
+      - utterance: "how long is left"
+        args: {}
+      - utterance: "what alarms do I have"
+        args: {kind: alarm}
+
+  - name: timer.cancel
+    description: >-
+      Cancel one of the speaker's timers, alarms or reminders, or all of them. Use for "cancel
+      the timer", "stop my alarm", "cancel the pasta timer". Match by label when given; if
+      several match and none is specified, cancel the one firing soonest.
+    risk: act
+    untrusted_output: false
+    deferred: false
+    idempotent: false
+    timeout_ms: 2000
+    args:
+      type: object
+      properties:
+        id: {type: string, description: "Exact id from timer.list, if known."}
+        label: {type: string, description: "Label as the user said it: 'pasta', 'call mom'."}
+        kind:
+          type: string
+          enum: [timer, alarm, reminder]
+          description: "Only this kind, e.g. 'stop my alarm' → alarm."
+        all: {type: boolean, default: false, description: "True for 'cancel all my timers' or 'cancel everything'."}
+      additionalProperties: false
+    output:
+      type: object
+      properties:
+        speak: {type: string}
+        cancelled: {type: array, items: {type: string}}
+        status: {type: string, enum: [ok, none_matched, needs_clarification]}
+      required: [speak, status]
+    examples:
+      - utterance: "cancel the pasta timer"
+        args: {label: "pasta"}
+      - utterance: "stop my alarm"
+        args: {kind: alarm}

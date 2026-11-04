@@ -1,0 +1,153 @@
+# evals.yaml — utterance → expected tool/args/decision (docs/MODULES.md §12).
+# Offline: policy decision per case and the handler in dry-run against these fixtures.
+# Every AGENT.md example agrees with these fixtures (rubric R4).
+
+api: 1
+module: lists
+freeze_time: "2026-11-01T09:00:00-08:00"
+
+fixtures:
+  profiles:
+    alice: {kind: member, locale: en-US, tz: America/Los_Angeles}
+  kv:
+    household:
+      "list:shopping":
+        name: shopping
+        items:
+          - {text: milk, added_at: "2026-10-31T18:00:00-07:00"}
+          - {text: eggs, added_at: "2026-10-31T18:01:00-07:00"}
+    alice:
+      "list:to-do":
+        name: to-do
+        items:
+          - {text: renew passport, added_at: "2026-10-30T08:00:00-07:00"}
+
+cases:
+  # ---- list.add
+  - id: add_already_there
+    utterance: "add milk to the shopping list"
+    profile: alice
+    expect:
+      tool: list.add
+      args: {items: [milk]}
+      effects: []                            # nothing new → no write
+      speak_contains: ["Milk is already on it"]
+      path: fast
+
+  - id: add_two_items
+    utterance: "put bread and butter on the list"
+    profile: alice
+    expect:
+      tool: list.add
+      args: {items: [bread, butter]}
+      effects: [{kind: kv, key: "list:shopping"}]
+      speak_contains: ["Added bread and butter to the shopping list"]
+
+  - id: add_personal_todo
+    utterance: "add call the plumber to my to-do list"
+    profile: alice
+    expect:
+      tool: list.add
+      args: {items: [call the plumber], list: to-do, personal: true}
+      speak_contains: ["your to-do list"]
+
+  - id: add_indirect
+    utterance: "we're out of coffee"
+    profile: child                           # children have list.* at act
+    expect:
+      tool: list.add
+      args: {items: [coffee]}
+      speak_contains: ["Added coffee"]
+
+  - id: add_needs_item
+    utterance: "add it to the list"
+    profile: alice
+    expect:
+      tool: list.add
+      ask_user: true
+
+  # ---- list.read
+  - id: read_shopping
+    utterance: "what's on the shopping list"
+    profile: alice
+    expect:
+      tool: list.read
+      args: {}
+      effects: []
+      speak_contains: ["2 items: milk and eggs"]
+
+  - id: read_my_todo
+    utterance: "read my to-do list"
+    profile: alice
+    expect:
+      tool: list.read
+      args: {list: to-do, personal: true}
+      speak_contains: ["renew passport"]
+
+  - id: read_unknown_list
+    utterance: "what's on the hardware store list"
+    profile: alice
+    expect:
+      tool: list.read
+      args: {list: hardware store}
+      speak_contains: ["no hardware store list"]
+
+  # ---- list.remove
+  - id: remove_eggs
+    utterance: "take the eggs off the list"
+    profile: alice
+    expect:
+      tool: list.remove
+      args: {items: [eggs]}
+      speak_contains: ["Removed eggs from the shopping list"]
+
+  - id: remove_missing
+    utterance: "cross off bananas"
+    profile: alice
+    expect:
+      tool: list.remove
+      args: {items: [bananas]}
+      speak_contains: ["isn't on the shopping list"]
+
+  - id: clear_shopping
+    utterance: "clear the shopping list"
+    profile: alice
+    expect:
+      tool: list.remove
+      args: {clear: true}
+      effects: [{kind: kv, op: delete, key: "list:shopping"}]
+      speak_contains: ["Cleared the shopping list"]
+
+  # ---- policy: denials (the Guest preset has no list.* grants)
+  - id: guest_cannot_add
+    utterance: "add milk to the shopping list"
+    profile: guest
+    expect:
+      tool: list.add
+      denied: true
+
+  - id: guest_cannot_use_lists
+    utterance: "what's on the shopping list"
+    profile: guest
+    expect:
+      tool: null
+      denied: true                           # every list.* tool is denied for Guest
+
+  # ---- negative: not this module
+  - id: not_mine_timed_reminder
+    utterance: "remind me to buy milk at 5"
+    profile: alice
+    expect:
+      tool: null                             # timer.set (a time was given)
+
+  - id: not_mine_calendar
+    utterance: "add dentist to my calendar on Friday"
+    profile: alice
+    expect:
+      tool: null                             # caldav.create
+
+  - id: not_mine_order
+    utterance: "order more coffee online"
+    profile: alice
+    expect:
+      tool: null

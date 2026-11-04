@@ -1,0 +1,8 @@
+# IDENTITY_AND_TRUST §9. Applied to the built-in 'guest' profile at install. No entities.
+kind: guest
+risk_ceiling: act
+groups: []
+grants:
+  - {resource: "tool_glob:home.state", max_risk: read}
+  - {resource: "tool_glob:weather.*", max_risk: read}
+  - {resource: "tool_glob:timer.*", max_risk: act}

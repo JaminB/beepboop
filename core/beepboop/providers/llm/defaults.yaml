@@ -1,0 +1,11 @@
+# Default household `llm` configuration (docs/LLM_PROVIDERS.md §2.1 owns the shape).
+# Used until an admin saves System › LLM, which writes `household.llm` in the database
+# and replaces this whole document. Model ids are configuration, never code literals.
+providers:
+  bedrock: {}          # settings default from providers/llm/bedrock/manifest.yaml
+aliases:
+  fast:     {provider: bedrock, model: global.anthropic.claude-haiku-5-5, effort: low, cache_ttl: 5m}
+  smart:    {provider: bedrock, model: global.anthropic.claude-sonnet-5-5, effort: low}
+  fallback: {provider: bedrock, model: "global.anthropic.claude-haiku-4-5-20251001-v1:0"}
+default_alias: fast
+ladder: [fast, smart, fallback]

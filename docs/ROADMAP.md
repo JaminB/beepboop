@@ -82,21 +82,14 @@ The gate thresholds below (G1–G7) are the **only** place gate numbers live. Ot
 
 Result files so far. **Neither is a gate result**; they are cited only as they label themselves:
 
-- [`tools/bench/results/2026-11-02-workstation-g3-preliminary.json`](../tools/bench/results/2026-11-02-workstation-g3-preliminary.json): *"preliminary, x86 workstation on the owner's home connection, NOT the Pi gate measurement"*. Haiku 5.5 via `global.` inference profile, us-west-2, 16 calls. Warm first-call TTFT p50 1125 ms (n = 5); second (cached, tool-result) call TTFT p50 1002 ms (n = 6); prompt cache read seen. There is no valid cold-cache sample (a stale pooled connection hit the read timeout) and no valid pre-warm sample (`warm()` bug, since fixed); see the file's `notes`.
-- [`tools/bench/results/2026-11-03-desktop-n9qe44h-synthetic.json`](../tools/bench/results/2026-11-03-desktop-n9qe44h-synthetic.json): *"synthetic / x86 / not a gate result"* (Windows 11 x86_64, TTS-generated corpus). Gate evaluator output: G1, G2, G5, G6 `incomplete` (run preconditions unmet: not a Pi, synthetic corpus, no HA), G3, G4, G7 `skipped`; nothing `pass`.
+- [`tools/bench/results/2026-11-02-workstation-g3-preliminary.json`](../tools/bench/results/2026-11-02-workstation-g3-preliminary.json): an x86 workstation probe, not the Pi gate. Haiku 5.5, us-west-2, 16 calls: warm first-call TTFT p50 1125 ms (n = 5), cached second call p50 1002 ms (n = 6); no valid cold-cache or pre-warm sample (see its `notes`).
+- [`tools/bench/results/2026-11-03-desktop-n9qe44h-synthetic.json`](../tools/bench/results/2026-11-03-desktop-n9qe44h-synthetic.json): synthetic corpus on x86; every gate `incomplete` or `skipped`, nothing `pass`.
 
-Resolved spec findings (2026-11-03). The step builders' findings were fixed in the spec, code and tests on the owner's decisions of 2026-11-03 (D1 lessac voices accepted, D3 OTP deferred, D4 fix all spec errors, licence moved to GPL-3.0-or-later). The docs and ADRs below now own each fact:
-
-- **512-d CAM++ embeddings; core depending on the audio package.** The protocol is its own light package, `protocol/beepboop_protocol/` (event protocol v2), and the embedding length is negotiated per connection in `hello.speaker.dim`: [ADR 0019](adr/0019-shared-protocol-package-and-negotiated-embedding-dim.md), [ARCHITECTURE §4](ARCHITECTURE.md#4-audio--core-event-protocol), [VOICE_PIPELINE §8.1](VOICE_PIPELINE.md#81-model).
-- **Piper phonemiser.** The project is GPL-3.0-or-later, so piper-phonemize / espeak-ng are normal product dependencies of the audio package: [ADR 0020](adr/0020-gpl-3-and-espeak-phonemiser.md), [VOICE_PIPELINE §11.1](VOICE_PIPELINE.md).
-- **Lessac-derived voices (D1).** Accepted for wake-word generation and the default TTS voice, with the research-only provenance recorded: [ADR 0020](adr/0020-gpl-3-and-espeak-phonemiser.md), [models/LICENSES.md](../models/LICENSES.md), [OPERATIONS §13](OPERATIONS.md).
-- **KEK (D3).** The passphrase-wrapped KEK is the v0.1 default; the OTP key is an optional later upgrade (V5 above): [ADR 0011](adr/0011-sqlite-single-file.md), [DATA_AND_PRIVACY §6.3](DATA_AND_PRIVACY.md).
-- **Protocol, HA, LLM-provider and ops spec errors (D4).** `turn_id` rule, `health.aec_verified`, `speak` clip keys and framing limits ([ARCHITECTURE §4](ARCHITECTURE.md#4-audio--core-event-protocol)); shared log redaction ([CLAUDE.md](../CLAUDE.md) rule 5); HA onboarding token revoke and canonical URLs ([HOME_ASSISTANT §2–§3](HOME_ASSISTANT.md)); Bedrock bearer auth, retry and warm-up ([LLM_PROVIDERS §3](LLM_PROVIDERS.md)); firewall, `.env` and `ports.yaml` ([OPERATIONS §2–§3](OPERATIONS.md)).
+Resolved spec findings (2026-11-03, owner decisions D1, D3, D4 and the GPL-3.0-or-later licence): 512-d CAM++ embeddings negotiated per connection and the protocol as its own package ([ADR 0019](adr/0019-shared-protocol-package-and-negotiated-embedding-dim.md)); the Piper phonemiser and lessac-derived voices ([ADR 0020](adr/0020-gpl-3-and-espeak-phonemiser.md)); the passphrase KEK as the v0.1 default ([DATA_AND_PRIVACY §6.3](DATA_AND_PRIVACY.md)); the protocol, HA, LLM-provider and ops spec errors, each fixed in its owning doc ([ARCHITECTURE §4](ARCHITECTURE.md#4-audio--core-event-protocol), [HOME_ASSISTANT §2–§3](HOME_ASSISTANT.md), [LLM_PROVIDERS §3](LLM_PROVIDERS.md), [OPERATIONS §2–§3](OPERATIONS.md)). The zipformer `bpe.model` is pinned as its own manifest entry (2026-11-04); only its hotword WER delta is unmeasured ([VOICE_PIPELINE §10.2](VOICE_PIPELINE.md)).
 
 Still open:
 
 - **D2 (AWS profile)**: owner decision pending.
-- **Zipformer `bpe.model`**: the pinned zipformer ships no `bpe.model`, so per-profile hotwords need a different export or a separately pinned `bpe.model` in v0.1; the hotword WER delta is unmeasured ([VOICE_PIPELINE §10.2](VOICE_PIPELINE.md)).
 - **int8 CAM++**: needs a self-made quantization before the G1 A/B (G1 above).
 - **`speak` unknown-key rule**: an unknown clip key with no `text` plays the `error` earcon and reports `speak.done` reason `error` ([ARCHITECTURE §4.2](ARCHITECTURE.md#4-audio--core-event-protocol)); a builder's choice awaiting owner confirmation.
 
@@ -126,11 +119,30 @@ Still open:
 3. **Identity.** On the fixture household (6 speakers), closed-set accuracy ≥ 97 % on 2 s utterances with the Guest fallback counted as an error; impostor acceptance into a `personal` tool ≤ 1 % at the calibrated threshold; a child misidentified as an admin never completes a `critical` action in the eval suite.
 4. **Policy.** Property-based tests show: no tool executes without `policy.authorize`; a `critical` tool never executes without a consumed approval nonce or verified PIN; a tainted turn requires confirmation for every non-`read` call; a profile never exceeds its ceiling; a new HA entity is unreachable by every profile until granted.
 5. **Approvals.** Playwright: a `critical` voice request produces a banner on the same profile's web session within 2 s; approving from a different profile's session fails; the nonce cannot be reused; an approval after 60 s is rejected and the device says so.
-6. **Offline.** With the uplink unplugged: "Hey beepboop, turn off the kitchen lights", "set a timer for ten minutes" and "add milk to the shopping list" complete via the fast path at p50 ≤ 0.5 s; "what's the weather" gets a spoken "I can't reach the internet" within 1 s.
+6. **Offline.** With the uplink unplugged: "Hey beepboop, turn off the kitchen lights", "set a timer for ten minutes" and "add milk to the shopping list" complete via the fast path at p50 ≤ 0.5 s; "what's the weather" gets the spoken `offline` phrase ([VOICE_PIPELINE §11.6](VOICE_PIPELINE.md#116-system-phrases-normative)) within 1 s.
 7. **Modules.** Every v0.1 module passes `module check` with ≥ 3 eval cases per tool and ≥ 1 denial; live tool selection ≥ 90 % per module against Haiku 5.5; no module imports an MCP, HA or LLM SDK or `beepboop.ha` (CI grep).
 8. **Privacy.** No audio bytes on disk after a turn (fs scan in CI on the Pi runner); transcripts expire at 30 days; "delete me" leaves zero rows for that profile across all tables; export produces a zip the restore test can read.
 9. **Ops.** Restoring a backup onto a second Pi with the recovery phrase reproduces profiles, grants, voiceprints and HA config; `beepboop update` to a deliberately broken image rolls back and says so; `models/LICENSES.md` lint passes; the health endpoint reports all fields in [docs/OPERATIONS.md §11](OPERATIONS.md#11-observability); `beepboop doctor` flags an undeclared listening port.
 10. **Docs.** A new engineer scaffolds and ships a toy module from [docs/MODULES.md](MODULES.md) and [docs/module-template/](module-template/README.md) alone (tested by giving the docs to a fresh Claude Code session). The template's Python is linted by ruff today and must also pass `pyright --strict` once `beepboop.module` and `beepboop.testing` exist: remove `docs` from the pyright `exclude` in `pyproject.toml` (keeping `docs/research` out) as part of this criterion.
+
+**Status (2026-11-04, after the security, spec and DX reviews).** Every v0.1 track is built and wired into one system on x86: `beepboop serve` boots core with the audio bridge and the built UI and connects to `beepboop-audio`; [`tests/system/`](../tests/system/test_e2e.py) drives it with a scripted audio peer and the real audio service on fake models, a fake HA and a scripted LLM. Nothing has run on a Pi, an XVF3800, a live HA or Bedrock; **no number here is measured**. **done** = a check that passes in CI on x86; **code-done, pending Pi** = tested with fakes, the criterion needs the device, the owner or live services.
+
+| # | Status | Evidence on x86 | Still needed |
+|---|---|---|---|
+| 1 Install | code-done, pending Pi | `install.sh` tests and shellcheck; unclaimed `serve` speaks the claim code over the socket (`tests/system/test_serve.py`) | timed run on a fresh image (≤ 15 min) |
+| 2 Latency | not done | stages per turn incl. `tool.<name>` spans and `llm_first_sentence` from request sent; M0 `bench e2e`; the `bench-pi` CI job exists but has no runner | `first_audio` from `speak.done`, cache touch on wake; then `bench e2e` on both RAM variants on the owner's self-hosted runner |
+| 3 Identity | code-done, pending Pi | identifier property tests; sealed centroids in `profiles.sync`; the real audio service identifies the enrolled speaker (`tests/system/test_real_audio.py`); System › Voice thresholds | accuracy and impostor rate on the recorded corpus |
+| 4 Policy | done | Hypothesis properties over the pure gate (`core/tests/policy/test_properties.py`, `core/tests/ha/test_resolver_properties.py`) and over `Registry.dispatch` with a spy handler, every `via`, *test as* actors, generated profiles and grants (`core/tests/registry/test_dispatch_properties.py`): no handler without `allow`, no `critical`/`confirm` execution without a consumed, bound, single-use approval, no tainted non-read without one, ceiling and `new`-entity invariants | — |
+| 5 Approvals | code-done, pending Pi | Playwright against the fake core; through the real core and socket in `tests/system/test_e2e.py`; a typed (Chat) critical call is followed in the background and executes on approval; the HA wrapper binds an approval to the authorized entities | banner timing and spoken outcomes on the device |
+| 6 Offline | code-done, pending Pi | fast path with no LLM, `offline` phrase (`tests/system/test_e2e.py`); the HA registry index loads from the `ha_entities` mirror at start so names resolve before HA connects | p50 ≤ 0.5 s and the 1 s phrase, uplink unplugged |
+| 7 Modules | not done | seven modules pass `module check --all` (evals now validate results against `output` and require `speak`); import ban clean; the Guest preset is applied by migration 0002 | `module check --llm` (≥ 90 % live selection) is not wired: exits 2 |
+| 8 Privacy | code-done, pending Pi | `audio/tests/test_no_audio_on_disk.py` (static) and `tools/ci/no_audio_on_disk.py` (fs scan, wired into `bench-pi`); no writable audio mount; retention incl. 0 days and guest `kv`; cascade; export (admin export of another adult carries no transcripts) | fs scan on the Pi runner; a restore test that reads the export |
+| 9 Ops | code-done, pending Pi | restore under another KEK (`core/tests/db/test_backup.py`); rollback and `doctor` on fakes (`deploy/tests/test_host.py`); licences lint; `/api/health/detail` reports every §11 field with `update_available` from the daily manifest check and `bedrock` from the ladder and the last LLM turn (`null` = unknown) | second Pi, real broken image, real host, a real release feed |
+| 10 Docs | not done | the template passes ruff, pyright strict, pytest, `module check` with no warnings; `module new` leaves TODO markers and prints next steps; `chat --seed --fake-llm` drives a module offline | the fresh-session scaffolding test (owner) |
+
+Non-Pi gaps: `module check --llm`, `first_audio`, cache touch (agent); hotwords from lists, timers and `vocabulary:`, rebuilt on grant changes, and the enrollment similarity warning (audio bridge; System › Voice shows "everyone sounds distinct" until it exists); wake-word sensitivity editable from System › Voice (needs a host-side writer for `/config/beepboop.yaml`); `beepboop enroll` and `module enable|disable` (CLI); lowering an indirect tier (HA, needs an ADR); `weather.get_forecasts` response data (HA); one home for persona speed and voice (modules); `claim --reopen`, the Logs ring buffer and the spoken "update available" line (ops); the release manifest's signature (OPERATIONS §9); `module new --ha` scaffolds only the `requires.ha` block, not the weather-shaped module.
+
+Owner decisions taken in code on 2026-11-04, to confirm: an admin's export of another adult omits transcripts and replies (DATA_AND_PRIVACY §9.2 now says so; WEB_UI §3 was the stricter reading); a guest's module `kv` is allowed only for granted effects and swept with guest retention (DATA_AND_PRIVACY §8); a *test as* approval is bound to the acting admin (IDENTITY_AND_TRUST §7.2/§8).
 
 **Out of scope for v0.1.** External `/mcp` clients, OAuth modules (Google, Spotify native), push or passkeys, HA Companion phone confirm, Tier 1 HTTPS, one-click update button in the UI, cloud STT/TTS, presence prior, voiceprint adaptation, "sounds like you" live meter, re-enrol prompts, false-wake review queue, household wake-word fine-tune, `home://context` resource, MCP "pin to core", Bedrock Guardrails, per-profile "require TOTP again for approvals", policy YAML import/diff, cost budgets, memory, routines and module event subscriptions, barge-in, satellites, third-party MCP proxy, non-English speech models.
 
@@ -194,7 +206,7 @@ Still open:
 
 ## Ideas parking lot
 
-Every predicted feature from the synthesis, mapped to where it lands. "Core" means it is part of the architecture from v0.1 even if the UI for it grows later.
+Every predicted feature from the synthesis, mapped to where it lands.
 
 | # | Feature | Milestone | Notes |
 |---|---|---|---|
@@ -206,27 +218,27 @@ Every predicted feature from the synthesis, mapped to where it lands. "Core" mea
 | 6 | Per-turn latency waterfall and `beepboop bench` | M0 (bench), v0.1 (UI) | CI on a real Pi |
 | 7 | Module dev kit: `module new`/`check`, dry-run, evals, conformance | v0.1; `module check --llm` in CI v0.2 | |
 | 8 | Privacy affordances: mute state, LED/chime, "forget the last thing I said", no audio retention, export, delete | v0.1 | "forget the last thing" deletes the turn row |
-| 9 | Music with per-user accounts and ducking on wake | v0.1 (Music Assistant via HA); ducking hook and native Spotify v0.2 | |
+| 9 | Music with per-user accounts and ducking on wake | v0.1 (Music Assistant); v0.2 (ducking, Spotify) | |
 | 10 | Presence-aware identity prior and addressing | v0.2 (prior); v0.3+ (addressed announcements) | HA `person` entities |
 | 11 | Per-user STT vocabulary; per-user TTS voice and rate | v0.1 | `SttContext.hotwords`; `persona` module |
-| 12 | Voice-ID trust page: similarity check, live "sounds like you" meter, re-enrol prompts | v0.1 (plain-sentence similarity check); v0.2 (live meter, re-enrol prompts) | |
-| 13 | Backup/restore at onboarding; safe updates with rollback | v0.1 (host-side CLI update, restore); v0.2 (one-click UI) | Never silent |
+| 12 | Voice-ID trust page: similarity check, live meter, re-enrol prompts | v0.1 (similarity check); v0.2 (the rest) | |
+| 13 | Backup/restore at onboarding; safe updates with rollback | v0.1 (CLI); v0.2 (one-click UI) | Never silent |
 | 14 | Cost and usage budgets with a spoken warning | v0.2 | Cost tracking per turn is v0.1 |
 | 15 | Babysitter / time-boxed guest access | v0.1 | Ordinary `guest` grants with an expiry ([IDENTITY §9](IDENTITY_AND_TRUST.md#9-presets)); not a preset, no code path |
 | 16 | Announcements, intercom, broadcast | v0.3+ | Foundation for satellites |
-| 17 | Accessibility: text replies to phone or screen, slower speech | v0.1 (rate per profile, Activity shows text); v0.2 (push text via HA Companion) | |
+| 17 | Accessibility: text replies, slower speech | v0.1 (rate, Activity text); v0.2 (push text) | |
 | 18 | Per-user wake aliases as an identity prior | v0.3+ | microWakeWord runs several models cheaply |
 | 19 | Multilingual per profile | v0.3+ | Locale is carried end to end from v0.1 |
 | 20 | Exportable, diffable YAML ACL policy | v0.2 | Export in v0.1 backups; import and diff v0.2 |
 | — | New-device inbox | v0.1 | Default-deny makes it necessary on day one |
 | — | Privacy ledger | v0.1 | Grows with each provider added |
-| — | False-wake review queue; household wake-word fine-tune | v0.2 at the earliest, only via a new ADR | Would store audio; [ADR 0018](adr/0018-no-audio-retention.md) forbids it in v0.1 |
+| — | False-wake review queue; household wake-word fine-tune | v0.2 at the earliest, by new ADR | Would store audio ([ADR 0018](adr/0018-no-audio-retention.md)) |
 | — | `home://context` resource; MCP "pin to core" | v0.2 | Ships with the external door |
 | — | Bedrock Guardrails opt-in | v0.2 | Prompt-layer filter stays the v0.1 baseline |
 | — | Per-profile "require TOTP again for approvals" | v0.2 | |
 | — | Household transcript-sharing toggle for adults | v0.3+ (parental controls) | Default: adults see each other's actions, not transcripts |
 | — | Module event subscriptions, routines, proactive announcements | v0.3+ | Needs a principal for events |
-| — | External (existing) Home Assistant mode | Out of scope through v0.2 | beepboop ships and pins its own HA; revisit by ADR |
+| — | External (existing) Home Assistant mode | Out of scope through v0.2 | Revisit by ADR |
 | — | Liveness / anti-spoofing plugin | v0.3+ | Off by default; never promised |
 | — | `beepboop_bridge` HA component | v0.3+ | Only if demand exists |
 

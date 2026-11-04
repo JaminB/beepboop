@@ -216,7 +216,8 @@ def resolve_kek(
     :class:`beepboop.secrets.otp.OtpUnavailableError` off-Pi.
     ``otp_kek_version`` comes from the keyring (§6.1).
     """
-    device_salt = load_device_salt(keys_dir)
+    # First boot creates the salt together with the wrapped KEK (both live in keys/).
+    device_salt = load_device_salt(keys_dir, create=create_passphrase_file)
     path = keys_dir / PASSPHRASE_KEK_FILE
     if path.exists():
         if passphrase is None:

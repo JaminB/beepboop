@@ -1,0 +1,17 @@
+# /etc/systemd/system/beepboop.service (installed by deploy/install.sh; OPERATIONS §5)
+[Unit]
+Description=beepboop (Docker Compose stack)
+Requires=docker.service
+After=docker.service network-online.target nftables.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/srv/beepboop/deploy
+ExecStart=/usr/bin/docker compose -f /srv/beepboop/deploy/compose.yaml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f /srv/beepboop/deploy/compose.yaml down
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

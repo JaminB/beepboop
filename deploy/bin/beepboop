@@ -1,0 +1,6 @@
+#!/bin/sh
+# /usr/local/bin/beepboop: the host CLI (OPERATIONS §5, CLAUDE.md §9).
+# Host-only subcommands run in beepboop_host.py on the Pi's own Python; everything else
+# is forwarded into core with `docker compose exec core beepboop ...`.
+set -eu
+exec /usr/bin/python3 /usr/local/lib/beepboop/beepboop_host.py "$@"

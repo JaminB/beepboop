@@ -1,0 +1,9 @@
+# deploy/firmware.lock: the vetted ReSpeaker XVF3800 firmware (OPERATIONS §1, §12).
+# PENDING on Pi (owner): flash the 16 kHz USB firmware, then record the exact version the
+# array reports and its USB ids here. Until then `beepboop doctor` skips the firmware check.
+schema: 1
+xvf3800:
+  variant: usb-16khz
+  version: pending
+  usb_vendor: "0x2886"   # Seeed Studio
+  usb_product: pending

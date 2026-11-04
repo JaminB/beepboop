@@ -1,0 +1,173 @@
+# evals.yaml: utterance → expected tool/args/decision (docs/MODULES.md §12).
+# Offline: policy decision per case + the handler in dry-run against the HA state table below
+# (two Music Assistant players and a TV that MA does not own). `ctx.ha.call_service` records
+# the play_media call as an effect instead of sending it.
+
+api: 1
+module: music
+freeze_time: "2026-11-01T19:00:00-08:00"
+
+fixtures:
+  settings: {default_player: "01JMUSICKITCHEN0000000000"}    # the household default
+  profiles:
+    alice: {kind: member, locale: en-US, tz: America/Los_Angeles, name: Alice}
+    robin:                                     # a child whose parents added music to the preset
+      kind: child
+      tz: America/Los_Angeles
+      grants:
+        - {resource: "tool_glob:home.*", max_risk: act}
+        - {resource: "tool_glob:media.*", max_risk: act}
+        - {resource: "tool_glob:timer.*", max_risk: act}
+        - {resource: "tool_glob:music.*", max_risk: act}
+  ha:
+    states:
+      - entity_id: media_player.kitchen
+        uuid: "01JMUSICKITCHEN0000000000"
+        state: idle
+        area_id: kitchen
+        attributes: {friendly_name: Kitchen, mass_player_type: player}
+      - entity_id: media_player.living_room
+        uuid: "01JMUSICLIVING00000000000"
+        state: playing
+        area_id: living_room
+        attributes:
+          friendly_name: Living Room Speaker
+          mass_player_type: player
+          media_title: Bohemian Rhapsody
+          media_artist: Queen
+          media_album_name: A Night at the Opera
+      - entity_id: media_player.kitchen_tv
+        uuid: "01JMUSICKITCHENTV00000000"
+        state: "off"
+        area_id: kitchen
+        attributes: {friendly_name: Kitchen TV}
+
+cases:
+  # ---- music.play
+  - id: play_artist_default_speaker
+    utterance: "play some Queen"
+    profile: alice
+    expect:
+      tool: music.play
+      args: {query: "Queen", media_type: "artist"}
+      effects:
+        - kind: ha
+          domain: music_assistant
+          service: play_media
+          targets: ["01JMUSICKITCHEN0000000000"]
+          data: {media_id: "Queen", media_type: "artist"}
+      speak_contains: ["Playing Queen on Kitchen"]
+
+  - id: play_radio_in_room
+    utterance: "play jazz radio in the living room"
+    profile: alice
+    expect:
+      tool: music.play
+      args: {query: "jazz", media_type: "radio", player: "living room"}
+      effects:
+        - {kind: ha, service: play_media, targets: ["01JMUSICLIVING00000000000"]}
+      speak_contains: ["Living Room Speaker"]
+
+  - id: play_kitchen_prefers_ma_player
+    utterance: "play Abbey Road in the kitchen"
+    profile: alice
+    expect:
+      tool: music.play
+      args: {query: "Abbey Road", media_type: "album", player: "kitchen"}
+      effects:
+        - {kind: ha, targets: ["01JMUSICKITCHEN0000000000"]}   # not the Kitchen TV
+
+  - id: play_next
+    utterance: "play Under Pressure next"
+    profile: alice
+    expect:
+      tool: music.play
+      args: {query: "Under Pressure", media_type: "track", enqueue: "next"}
+      effects:
+        - {kind: ha, data: {enqueue: "next"}}
+      speak_contains: ["Queued Under Pressure next"]
+
+  - id: granted_child_may_play
+    utterance: "play the Frozen soundtrack"
+    profile: robin                             # act is within the Child ceiling
+    expect:
+      tool: music.play
+      args: {query: "Frozen", media_type: "album"}
+      speak_contains: ["Playing Frozen"]
+
+  - id: play_needs_what
+    utterance: "play something"
+    profile: alice
+    expect:
+      tool: music.play
+      ask_user: true                           # LLM mode: ask what to play
+
+  # ---- music.now_playing
+  - id: whats_playing
+    utterance: "what's playing"
+    profile: alice
+    expect:
+      tool: music.now_playing
+      args: {}
+      effects: []
+      speak_contains: ["Living Room Speaker is playing Bohemian Rhapsody by Queen"]
+      taint: true                              # titles come from streaming services
+
+  - id: whats_playing_in_kitchen
+    utterance: "what's playing in the kitchen"
+    profile: alice
+    expect:
+      tool: music.now_playing
+      args: {player: "kitchen"}
+      speak_contains: ["Nothing is playing on Kitchen"]
+
+  - id: who_sings_this
+    utterance: "who sings this"
+    profile: alice
+    expect:
+      tool: music.now_playing
+      args: {}
+      speak_contains: ["Queen"]
+
+  # ---- policy: denials (checked without an LLM; must be 100%)
+  - id: child_preset_denied
+    utterance: "play the Frozen soundtrack"
+    profile: child                             # the Child preset has no music.* grant
+    expect:
+      denied: true
+
+  - id: guest_denied
+    utterance: "play some Queen"
+    profile: guest                             # the Guest preset has no music.* grant
+    expect:
+      tool: music.play
+      args: {query: "Queen", media_type: "artist"}
+      denied: true
+
+  - id: unsure_voice_denied
+    utterance: "play some Queen"
+    profile: alice
+    voice: {confidence: 0.55, margin: 0.05}   # below τ_act: act tools are denied, not confirmed
+    expect:
+      tool: music.play
+      args: {query: "Queen", media_type: "artist"}
+      denied: true
+
+  # ---- negative: not this module
+  - id: not_mine_pause
+    utterance: "pause the music"
+    profile: alice
+    expect:
+      tool: null                               # media.control
+
+  - id: not_mine_volume
+    utterance: "turn it down in the kitchen"
+    profile: alice
+    expect:
+      tool: null                               # media.control
+
+  - id: not_mine_tv
+    utterance: "turn on the kitchen TV"
+    profile: alice
+    expect:
+      tool: null                               # home.turn_on

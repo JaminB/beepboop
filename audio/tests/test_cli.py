@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 import structlog
@@ -56,3 +57,23 @@ def test_audio_logs_redact_pins() -> None:
     line = json.loads(stream.getvalue())
     assert line["spoken_pin"] == REDACTED
     assert "1234" not in stream.getvalue()
+
+
+def test_serve_options_parse() -> None:
+    from beepboop_audio.cli import build_parser
+
+    args = build_parser().parse_args(
+        ["serve", "--fake-mic", "x.wav", "--socket", "tcp://127.0.0.1:0", "--fake-providers"]
+    )
+    assert args.command == "serve"
+    assert args.fake_providers
+    assert str(args.fake_mic) == "x.wav"
+
+
+def test_serve_without_models_fails_cleanly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BB_CONFIG", str(tmp_path / "none.yaml"))
+    code = main(["serve", "--models", str(tmp_path), "--socket", "tcp://127.0.0.1:0"])
+    assert code == 1
+    assert "beepboop-audio:" in capsys.readouterr().err

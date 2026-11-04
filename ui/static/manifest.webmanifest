@@ -1,0 +1,9 @@
+{
+	"name": "beepboop",
+	"short_name": "beepboop",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#f7f7f5",
+	"theme_color": "#3b6fe0",
+	"icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

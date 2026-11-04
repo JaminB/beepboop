@@ -1,0 +1,41 @@
+{
+	"name": "beepboop-ui",
+	"version": "0.0.0",
+	"private": true,
+	"license": "GPL-3.0-or-later",
+	"type": "module",
+	"packageManager": "pnpm@10.34.9",
+	"imports": {
+		"#lib/*": "./src/lib/*",
+		"#messages/*": "./messages/*"
+	},
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+		"gen:api": "openapi-typescript openapi.json -o src/lib/api/schema.d.ts",
+		"test": "vitest run",
+		"test:e2e": "playwright test",
+		"fake-core": "uv run --project .. python -m beepboop.api.devserver --spa build"
+	},
+	"dependencies": {
+		"@internationalized/date": "3.12.4",
+		"bits-ui": "2.20.4",
+		"openapi-fetch": "0.17.0",
+		"qrcode-generator": "1.4.4"
+	},
+	"devDependencies": {
+		"@playwright/test": "1.64.1",
+		"@sveltejs/adapter-static": "4.0.1",
+		"@sveltejs/kit": "3.1.1",
+		"@sveltejs/vite-plugin-svelte": "7.3.1",
+		"@types/node": "24.19.2",
+		"openapi-typescript": "7.13.0",
+		"svelte": "5.57.3",
+		"svelte-check": "4.7.8",
+		"typescript": "6.0.3",
+		"vite": "8.3.5",
+		"vitest": "5.1.0"
+	}
+}

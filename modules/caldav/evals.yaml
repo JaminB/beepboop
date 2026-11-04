@@ -1,0 +1,147 @@
+# evals.yaml: utterance → expected tool/args/decision (docs/MODULES.md §12).
+# Offline (every PR): policy decision per case + the handler in dry-run against these fixtures.
+# The fixtures are a small CalDAV server: discovery (root → principal → calendar home) and one
+# calendar-query REPORT whose events the handler filters by range. The same fixtures seed
+# tests/test_module.py through beepboop.testing.fake_context.
+
+api: 1
+module: caldav
+freeze_time: "2026-11-01T09:00:00-08:00"     # a Sunday
+
+fixtures:
+  settings: {url: "https://cal.test/dav/", calendar: "Personal", lookahead_days: 7}
+  secrets: {username: "alice", app_password: "fixture-not-a-real-password"}
+  profiles:
+    alice: {kind: member, locale: en-US, tz: America/Los_Angeles, name: Alice}
+  http:                                       # matched in order; PROPFIND/REPORT are reads
+    - match: {method: PROPFIND, url: "https://cal.test/dav/"}
+      response: {status: 207, text_file: tests/fixtures/root.xml}
+    - match: {method: PROPFIND, url: "https://cal.test/dav/principals/alice/"}
+      response: {status: 207, text_file: tests/fixtures/principal.xml}
+    - match: {method: PROPFIND, url: "https://cal.test/dav/calendars/alice/"}
+      response: {status: 207, text_file: tests/fixtures/calendars.xml}
+    - match: {method: REPORT, url: "https://cal.test/dav/calendars/alice/personal/"}
+      response: {status: 207, text_file: tests/fixtures/report.xml}
+
+cases:
+  # ---- caldav.events
+  - id: agenda_today
+    utterance: "what's on my calendar today"
+    profile: alice
+    expect:
+      tool: caldav.events
+      args: {}
+      effects: []                             # a read records no side effects
+      speak_contains: ["1 event today", "Pick up dry cleaning at 5 PM"]
+      taint: true                             # event titles are third-party text
+
+  - id: agenda_tomorrow
+    utterance: "what's on my calendar tomorrow"
+    profile: alice
+    expect:
+      tool: caldav.events
+      args: {start: "2026-11-02T00:00:00-08:00", end: "2026-11-02T23:59:59-08:00"}
+      speak_contains: ["2 events tomorrow", "Standup at 9:30 AM and Dentist at 3 PM"]
+
+  - id: free_thursday
+    utterance: "am I free Thursday"
+    profile: alice
+    expect:
+      tool: caldav.events
+      args: {start: "2026-11-05T00:00:00-08:00", end: "2026-11-05T23:59:59-08:00"}
+      speak_contains: ["Sam's birthday all day"]
+
+  - id: next_dentist
+    utterance: "when is my next dentist appointment"
+    profile: alice
+    expect:
+      tool: caldav.events
+      args: {query: "dentist"}
+      speak_contains: ["Dentist tomorrow at 3 PM"]
+
+  - id: week_ahead
+    utterance: "what does my week look like"
+    profile: alice
+    expect:
+      tool: caldav.events
+      args: {start: "2026-11-01T09:00:00-08:00", end: "2026-11-07T23:59:59-08:00"}
+      speak_contains: ["5 events", "and 2 more"]
+
+  - id: unsure_voice_needs_confirm
+    utterance: "what's on my calendar"
+    profile: alice
+    voice: {confidence: 0.80, margin: 0.15}  # above τ_act, below τ_personal
+    expect:
+      tool: caldav.events
+      args: {}
+      confirm: true                           # personal tier: second factor, never a spoken yes
+
+  # ---- caldav.create
+  - id: add_dentist
+    utterance: "put dentist on my calendar Friday at 3"
+    profile: alice
+    expect:
+      tool: caldav.create
+      args: {title: "Dentist", start: "2026-11-06T15:00:00-08:00"}
+      effects:
+        - {kind: http, method: PUT, url: {$regex: "^https://cal\\.test/dav/calendars/alice/personal/[^/]+\\.ics$"}}
+      speak_contains: ["Added Dentist on Friday at 3 PM"]
+
+  - id: add_all_day
+    utterance: "block out Saturday for the move"
+    profile: alice
+    expect:
+      tool: caldav.create
+      args: {title: "Move", start: "2026-11-07T00:00:00-08:00", all_day: true}
+      effects:
+        - {kind: http, method: PUT}
+      speak_contains: ["Added Move on Saturday"]
+
+  - id: add_with_place_and_end
+    utterance: "schedule lunch with Sam tomorrow from 12 to 1:30 at Rosie's"
+    profile: alice
+    expect:
+      tool: caldav.create
+      args: {title: "Lunch with Sam", start: "2026-11-02T12:00:00-08:00", end: "2026-11-02T13:30:00-08:00", location: "Rosie's"}
+      speak_contains: ["Added Lunch with Sam tomorrow at noon"]
+
+  - id: add_needs_time
+    utterance: "add lunch with Sam to my calendar"
+    profile: alice
+    expect:
+      tool: caldav.create
+      ask_user: true                          # LLM mode: ask for a time instead of guessing
+
+  # ---- policy: denials (checked without an LLM; must be 100%)
+  - id: child_denied
+    utterance: "what's on my calendar"
+    profile: child                            # Child preset: ceiling act; caldav.* are personal
+    expect:
+      denied: true
+
+  - id: guest_denied_create
+    utterance: "put dentist on my calendar Friday at 3"
+    profile: guest
+    expect:
+      tool: caldav.create
+      args: {title: "Dentist", start: "2026-11-06T15:00:00-08:00"}
+      denied: true
+
+  # ---- negative: not this module
+  - id: not_mine_timer
+    utterance: "set a timer for ten minutes"
+    profile: alice
+    expect:
+      tool: null
+
+  - id: not_mine_reminder
+    utterance: "remind me to call mom at 5"
+    profile: alice
+    expect:
+      tool: null                              # timer.set with kind reminder, not caldav.create
+
+  - id: not_mine_shopping
+    utterance: "add eggs to the shopping list"
+    profile: alice
+    expect:
+      tool: null                              # list.add

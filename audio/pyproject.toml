@@ -18,13 +18,27 @@ dependencies = [
     "pymicro-wakeword==2.5.0",
     "soundfile>=0.13",
     "piper-phonemize==1.5.9",
+    "pyyaml>=6.0",       # /config/beepboop.yaml and models/manifest.yaml
+    "argon2-cffi>=25.1", # spoken-PIN verification against core's argon2id hash (VOICE_PIPELINE §12)
+    "soxr>=0.5",         # resampling to/from 16 kHz (VOICE_PIPELINE §2.3, §11.1)
 ]
 
 [project.scripts]
 beepboop-audio = "beepboop_audio.cli:main"
 
-# Provider entry-point groups (VOICE_PIPELINE §17): beepboop.wake_providers,
-# beepboop.speaker_providers, beepboop.stt_providers, beepboop.tts_providers.
+# Provider entry-point groups (VOICE_PIPELINE §17, CLAUDE.md §7.1). The ids are the
+# hyphenated ones; `providers:` in /config/beepboop.yaml selects one per kind.
+[project.entry-points."beepboop.wake_providers"]
+microwakeword = "beepboop_audio.wake.microwakeword:MicroWakeWordProvider"
+
+[project.entry-points."beepboop.speaker_providers"]
+sherpa-campp = "beepboop_audio.speaker.sherpa_campp:CamppProvider"
+
+[project.entry-points."beepboop.stt_providers"]
+sherpa-zipformer = "beepboop_audio.stt.sherpa_zipformer:ZipformerProvider"
+
+[project.entry-points."beepboop.tts_providers"]
+sherpa-piper = "beepboop_audio.tts.sherpa_piper:PiperProvider"
 
 [tool.uv.sources]
 beepboop-protocol = { workspace = true }

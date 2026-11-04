@@ -33,6 +33,7 @@ dev = [
     "boto3-stubs[bedrock-runtime,sts]>=1.40",
     "types-pyyaml>=6.0",
     "types-psutil>=7.0",
+    "types-jsonschema>=4.23",
 ]
 
 [tool.uv]
@@ -88,9 +89,12 @@ select = [
 "docs/module-template/tests/**" = ["TID252"]
 "modules/*/tests/**" = ["TID252"]
 "tools/ci/**" = ["T201"]           # CI scripts report to stdout
+# The HttpClient Protocol mirrors httpx (MODULES §5.3): `timeout=` is part of its signature.
+"core/beepboop/module/types.py" = ["ASYNC109"]
+"core/beepboop/testing/fakes.py" = ["ASYNC109"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["beepboop", "beepboop_audio", "beepboop_bench", "beepboop_protocol", "linkcheck", "import_ban"]
+known-first-party = ["beepboop", "beepboop_audio", "beepboop_bench", "beepboop_protocol", "linkcheck", "import_ban", "beepboop_host"]
 
 [tool.ruff.format]
 line-ending = "lf"
@@ -102,12 +106,11 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
-include = ["protocol", "core", "audio", "tools/bench", "tools/ci", "tools/probes", "deploy", "conftest.py"]
-# docs/module-template is excluded from pyright until the Module/ToolContext API it
-# imports (beepboop.module, beepboop.testing) exists in v0.1 (ROADMAP v0.1); ruff
-# already lints it.
-exclude = ["**/.venv", "**/__pycache__", "docs", "tools/train_wakeword"]
-extraPaths = ["tools/ci"]
+include = ["protocol", "core", "audio", "tools/bench", "tools/ci", "tools/probes", "deploy", "docs", "modules", "tests", "conftest.py"]
+# docs/module-template is type-checked like a real module (ROADMAP v0.1 acceptance 10);
+# docs/research is read-only provenance and stays out.
+exclude = ["**/.venv", "**/__pycache__", "docs/research", "tools/train_wakeword"]
+extraPaths = ["tools/ci", "deploy/host"]  # deploy/host: the stdlib-only host CLI
 reportMissingModuleSource = "warning"
 reportUnnecessaryTypeIgnoreComment = "error"
 
@@ -117,6 +120,12 @@ reportUnnecessaryTypeIgnoreComment = "error"
 minversion = "9.0"
 testpaths = [
     "protocol", "core", "audio", "tools/bench", "tools/ci", "tools/probes", "deploy",
+    # The worked example module is a real module: its tests run like any module's (MODULES §12.4).
+    "docs/module-template/tests",
+    # In-repo modules (modules/<id>/tests), MODULES §12.4.
+    "modules",
+    # Cross-service system tests: core + audio socket + fake LLM + fake HA (tests/system).
+    "tests",
     # Runs in the workspace venv (pydantic/pyyaml/structlog/numpy only); the
     # heavy training stack is in its own lock and those tests skip without it.
     "tools/train_wakeword/tests",

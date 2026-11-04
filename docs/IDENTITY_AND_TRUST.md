@@ -188,7 +188,9 @@ SCOPE_FOR = {"read": "home.read", "act": "home.control", "personal": "personal",
 
 @dataclass
 class Target:            # produced by the resolver, one per HA entity touched
-    uuid: str; domain: str; service: str; device_class: str | None; declared_risk: str | None
+    uuid: str; domain: str; service: str | None; device_class: str | None; declared_risk: str | None
+                         # service is None for a pure read (home.state): the tier is then `read` for every
+                         # non-blocked domain; device-class floors and declared_risk apply to services only
 
 @dataclass
 class Approval:          # a row of the approvals table (§8.2), passed back in on re-dispatch
@@ -260,13 +262,16 @@ def authorize(p: Principal, tool: ToolSpec, args: dict, targets: list[Target], n
     if not needs_factor:                          return allow(risk)
 
     # 7. Second factor. On first dispatch, name the factors; the registry creates the approvals row.
-    #    On re-dispatch, allow only if the approval is approved, unexecuted, same profile and same digest.
+    #    On re-dispatch, allow only if the approval is approved, unexecuted, same approver and same digest.
+    #    The approver is p.actor_profile_id or p.profile_id: a "test as" approval belongs to the acting
+    #    admin (§3.1), so only the admin's approval satisfies it and the child's own never can.
     if approval is not None:
         ok = (approval.decision == "approved" and approval.executed_at is None and approval.exp > now
-              and approval.profile_id == p.profile_id and approval.tool == tool.name
+              and approval.profile_id == (p.actor_profile_id or p.profile_id) and approval.tool == tool.name
               and approval.args_digest == digest(tool.name, canonical_json(args), sorted(t.uuid for t in targets)))
         return allow(risk) if ok else deny("approval_invalid", risk)
-    factors = available_factors(p, profile)       # voice: ("web", "pin"?) ; web: ("web",) ; oauth/pat: ("elicit",)
+    approver = profiles[p.actor_profile_id or p.profile_id]
+    factors = available_factors(p, approver)      # voice: ("web", "pin"?) ; web: ("web",) ; oauth/pat: ("elicit",)
     if not factors:                               return deny("no_factor", risk)   # unreachable with ceiling act
     return confirm(risk, factors)
 ```
@@ -303,7 +308,7 @@ Spoken replies are the system phrases in [VOICE_PIPELINE §11.6](VOICE_PIPELINE.
 
 ### 8.1 When it fires
 
-For any `critical` call, for a `personal` call below `τ_strict`/`m_personal`, and for any `act`+ call while the conversation is tainted. It is satisfied only by the **same profile** through a channel that is not voice identification: the web UI (v0.1), the spoken PIN (v0.1, opt-in per profile), or a later factor (§8.5).
+For any `critical` call, for a `personal` call below `τ_strict`/`m_personal` (unless System › Voice has "ask on phone when unsure" off, in which case that call is denied as `identity`), and for any `act`+ call while the conversation is tainted. It is satisfied only by the **same profile** through a channel that is not voice identification: the web UI (v0.1), the spoken PIN (v0.1, opt-in per profile), or a later factor (§8.5). The one exception is *test as* (§3.1): the approval is created for and satisfied by the acting admin, never by the impersonated child or guest.
 
 ### 8.2 The approval record
 
@@ -317,7 +322,7 @@ approved ──(the executor runs the call)──▶ executed
 - **Decide, once.** `UPDATE approvals SET decision=?, decided_at=now, factor=? WHERE id=? AND profile_id=? AND decision IS NULL AND exp > now`. Exactly one row changes or the factor loses (`409 already_decided | expired | not_yours`).
 - **Execute, once.** The executor re-dispatches with the approval and, on `allow`, runs `UPDATE approvals SET executed_at=now WHERE id=? AND decision='approved' AND executed_at IS NULL AND exp > now`. Zero rows means someone else executed it or it expired; nothing runs.
 
-Binding: **same profile**, **same request** (`args_digest` of what will execute), **single use** (the two guarded updates), **short-lived** (`exp = created + 60 s`, extended once to 120 s if the approver's session opens the approvals stream in time). Max 3 pending per profile. Written with `synchronous=FULL`.
+Binding: **same profile** (the actor for a *test as* call), **same request** (`args_digest` of what will execute), **single use** (the two guarded updates), **short-lived** (`exp = created + 60 s`, extended once to 120 s if the approver's session opens the approvals stream in time). Max 3 pending per profile. Written with `synchronous=FULL`. Inside the executing call, the policy-wrapped HA client acts only on the entity UUIDs the dispatch authorized, each at most once ([HOME_ASSISTANT §8](HOME_ASSISTANT.md#8-the-policy-wrapped-client-ctxha)), so a handler cannot widen one approval to other devices or loop it. A rejected execution (`approval_invalid`) is audited like any other decision (§11).
 
 ### 8.3 v0.1: web UI confirm (no push)
 

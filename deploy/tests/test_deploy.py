@@ -135,6 +135,8 @@ def test_audio_device_and_realtime(compose: dict[str, Any]) -> None:
     assert audio["memswap_limit"] == audio["mem_limit"], "audio never swaps"
     assert audio["oom_score_adj"] == -500
     assert any(t.startswith("/tmp:") for t in audio["tmpfs"])  # noqa: S108 - a tmpfs spec
+    # No writable host mount: clips live in RAM, calibration arrives in profiles.sync.
+    assert all(v.endswith(":ro") or v.startswith("bb-run:") for v in audio["volumes"])
 
 
 def test_cpusets(compose: dict[str, Any]) -> None:
@@ -211,7 +213,8 @@ def test_env_example_holds_no_secrets() -> None:
     env = _env_example()
     for key, value in env.items():
         assert not _SECRETISH.search(key), key
-        assert key.startswith("BB_"), key
+        # BB_* plus the one Compose variable (which optional profiles are on).
+        assert key.startswith("BB_") or key == "COMPOSE_PROFILES", key
         if key.endswith("_DIGEST"):
             assert value == "" or re.fullmatch(r"sha256:[0-9a-f]{64}", value), key
 

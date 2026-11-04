@@ -151,6 +151,8 @@ def check_link(link: Link, root: Path = REPO_ROOT) -> Problem | None:
 
 def _is_excluded(path: Path, root: Path) -> bool:
     relative = path.relative_to(root).as_posix()
+    if "node_modules" in relative.split("/"):  # e.g. ui/node_modules: third-party READMEs
+        return True
     return any(relative == d or relative.startswith(f"{d}/") for d in EXCLUDED_DIRS)
 
 

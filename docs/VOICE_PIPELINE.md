@@ -118,11 +118,12 @@ Transport, envelope and the event catalog are defined once in [ARCHITECTURE §4]
 - `stt.partial` is throttled to one per 200 ms and exists for the UI live view only.
 - `speaker.final` is always sent, even when it equals the provisional result, and always before `stt.final`.
 - `stt.final{empty: true}` means no speech followed the wake word; core ends the turn silently or with `speak{clip: "cancel"}`.
-- `speak` arrives one sentence at a time (§11.2); the service synthesizes in `seq` order and reports `speak.done` per utterance with `t_first_audio` and `t_last_audio`. When `last: true` and `listen_after: true`, the reply window opens.
+- `speak` arrives one sentence at a time (§11.2); the service synthesizes in `seq` order and reports `speak.done` once per `utterance_id` with `t_first_audio` and `t_last_audio`; an utterance is complete when its `last: true` sentence has played or the next `speak` of the turn carries another `utterance_id`. When `last: true` and `listen_after: true`, the reply window opens. `speak{clip: "alarm"}` starts the alert lane (§11.4) and is reported done at once; `cancel` for that turn stops it.
 - `cancel` flushes the speech lane for that turn, plays the `cancel` earcon and returns to `IDLE`.
 - `capture_pin` / `pin.result`: §12. `pin.result` never contains digits.
 - `mic.state` is sent on every mute change; `mute` is only ever received (§13.2).
-- `health` is sent every 10 s and carries `aec_verified`.
+- `health` is sent on connect and every 10 s and carries `aec_verified` (always `false` in v0.1: the `bench aec` result lives in core's database and gates only barge-in, v0.3). `cpu_temp_c` is `-1.0` on a host without a thermal sensor.
+- A reply-window turn (`wake{trigger: "reply"}`) has no `speaker.provisional`: there is no wake phrase to embed.
 
 ---
 
@@ -163,7 +164,7 @@ Silero VAD (ONNX) through `sherpa_onnx.VoiceActivityDetector`, 32 ms windows, sp
 | Speech-start timeout | 5 s after `t_wake` | No speech → `cancel` earcon, `stt.final{empty: true}`, back to IDLE. |
 | Minimum speech | 300 ms | Shorter blips (a cough) are ignored. |
 | **Hangover** | **250 ms** of VAD silence after speech | Primary EOS trigger; the biggest knob in the latency budget. |
-| Adaptive hangover | 400 ms when the last `stt.partial` ends in a function word (`and`, `to`, `the`, `at`, `in`) or a number | Cuts "set a timer for… [pause] ten minutes" truncation. Vocabulary per locale in `audio/endpoint/<locale>.yaml`. The extra 150 ms visibly consumes budget (§14). |
+| Adaptive hangover | 400 ms when the last `stt.partial` ends in a function word (`and`, `to`, `the`, `at`, `in`) or a number | Cuts "set a timer for… [pause] ten minutes" truncation. Vocabulary per locale in `audio/beepboop_audio/pipeline/endpoint/<lang>.yaml`. The extra 150 ms visibly consumes budget (§14). |
 | STT endpoint backstop | zipformer `rule2_min_trailing_silence = 0.6 s`, `rule1 = 2.0 s`, `rule3_min_utterance_length = 15 s` | Fires if VAD misses (music bed, HVAC noise). |
 | Max utterance | 15 s | Cut with `too_long`; transcript so far is sent as final. |
 
@@ -190,10 +191,10 @@ Fusion: `score_final = 0.4 · score_wake + 0.6 · score_cmd` per candidate on AS
 
 ### 8.3 Scoring
 
-1. **Centroids.** Each profile has `k ≤ 4` unit-vector centroids from k-means over its enrollment embeddings (plus, from v0.2, its adaptation buffer), `k` by silhouette score. Enrollment embeddings are the **anchor set** and always participate.
+1. **Centroids.** Each profile has `k ≤ 4` unit-vector centroids from k-means over its enrollment embeddings (plus, from v0.2, its adaptation buffer), `k` by silhouette score. A split is kept only when its silhouette exceeds 0.1, each cluster has ≥ 3 clips and no two centroids have cosine > 0.9 (targets; otherwise `k = 1`). Core computes them when enrollment finishes (`DbVoiceprintSink` in `core/beepboop/audio_bridge.py`). Enrollment embeddings are the **anchor set** and always participate.
 2. **Raw score.** `s(p) = max_j cos(e, c_{p,j})` per enrolled profile `p`.
 3. **AS-norm.** Adaptive symmetric normalization against a cohort of ~200 embeddings: the other household members' centroids plus a bundled cohort (`models/speaker/cohort_<model_id>.npy`, synthesized from licensed Piper voices through the array's response so no third-party speech is redistributed; §18). Top-N = 50. Result: a z-score `z(p)`.
-4. **Calibration.** At enrollment (§9.3) each household fits a logistic map from genuine and impostor `z` distributions to a **calibrated confidence** `conf(p) ∈ [0,1]`. In events, `score = conf(top1)` and `margin = conf(top1) − conf(top2)`; this is the `confidence` on the Principal ([IDENTITY_AND_TRUST §3](IDENTITY_AND_TRUST.md#3-the-principal)).
+4. **Calibration.** At enrollment (§9.3) each household fits a logistic map from genuine and impostor `z` distributions to a **calibrated confidence** `conf(p) ∈ [0,1]`. In events, `score = conf(top1)` and `margin = conf(top1) − conf(top2)`; this is the `confidence` on the Principal ([IDENTITY_AND_TRUST §3](IDENTITY_AND_TRUST.md#3-the-principal)). The household fit reaches audio as the per-profile thresholds in `profiles.sync.calib`; the map itself uses default parameters `conf = σ(1.5·z − 3)` (targets: z = 2.6 → 0.70, z = 3.5 → 0.90). Until the bundled cohort exists, AS-norm uses the household's own centroids when there are ≥ 10, else fixed impostor statistics (μ = 0.10, σ = 0.10, targets); all are refitted in M0 (`bench speaker`).
 
 ### 8.4 Accept rule and per-tier thresholds
 
@@ -285,9 +286,9 @@ Audio is fed in 10 ms frames; decoding runs every 100 ms of accumulated audio; `
 
 ### 10.2 Per-profile hotword biasing
 
-**Blocked on a BPE model (M0 finding, 2026-11-03).** sherpa-onnx hotwords for an English BPE transducer need the model's BPE vocabulary (`modeling_unit: bpe` plus `bpe.vocab`, which is generated from `bpe.model`). The pinned `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` archive ships only `tokens.txt`, no `bpe.model`, so biasing cannot be built with it and the hotword WER delta in `bench stt` is **pending**. Before v0.1 one of two fixes is pinned in `models/manifest.yaml`: a small streaming English zipformer export that ships `bpe.model`/`bpe.vocab` (it must still pass G2), or the `bpe.model` from the icefall recipe this export was trained with, as a separate manifest entry with its sha256. Until then the stream runs without hotwords.
+**BPE model (M0 finding 2026-11-03, resolved 2026-11-04).** sherpa-onnx hotwords for an English BPE transducer need `modeling_unit: bpe` plus a `bpe.vocab`. The pinned zipformer archive ships only `tokens.txt`, so the `bpe.model` of the icefall recipe it was trained with (LibriSpeech `lang_bpe_500`, unigram, 500 pieces equal to `tokens.txt`) is pinned as its own manifest entry, `icefall-librispeech-bpe-500`, at a fixed Hugging Face commit with its sha256. `beepboop_audio/stt/sherpa_zipformer/bpe.py` reads it without a `sentencepiece` dependency: it renders the `bpe.vocab` text that the recognizer reads once at load (from a temporary file deleted right after) and drops phrases the vocabulary cannot encode (digits, symbols). Phrases are passed upper-cased, the vocabulary's case. Without the file installed the stream runs unbiased. Biasing is shown to work on a LibriSpeech test clip (conformance test, x86); the hotword WER delta in `bench stt` is still **pending** (bench work, on the fixture corpus).
 
-Contextual biasing (`hotwords_score: 1.5`, target) with a list rebuilt by core whenever a profile's grants, contacts, lists or timers change, pushed in `profiles.sync`: HA entity and area names the profile can reach (friendly names and aliases), household member names, list names and recent items, timer and alarm labels, and module-declared vocabulary (`manifest.yaml: vocabulary:`). Cap 200 entries per list, phrases ≤ 4 tokens, deduplicated, lower-cased and converted to BPE tokens at build time. The stream is created at `t_wake` with `household ∪ provisional_profile` once `speaker.provisional` is known (if late, the household list alone) and is never recreated mid-utterance.
+Contextual biasing (`hotwords_score: 1.5`, target) with a list rebuilt by core whenever a profile's grants, contacts, lists or timers change, pushed in `profiles.sync`: HA entity and area names the profile can reach (friendly names and aliases), household member names, list names and recent items, timer and alarm labels, and module-declared vocabulary (`manifest.yaml: vocabulary:`). Cap 200 entries per list, phrases ≤ 4 tokens, deduplicated, lower-cased and converted to BPE tokens at build time. The household-wide list travels as the `hotwords` of the `guest` row of `profiles.sync` (a row with no centroids); each profile's row carries its personal list. **Built in v0.1** (`build_profiles_sync`, `core/beepboop/audio_bridge.py`): member names and HA area names (household) and the names and aliases of the entities each profile can reach (personal); list names and items, timer labels and module `vocabulary:` are not collected yet, and the lists are rebuilt on connect and after an enrollment, not yet on every grant change. The stream is created at `t_wake` with `household ∪ provisional_profile` once `speaker.provisional` is known (if late, the household list alone) and is never recreated mid-utterance.
 
 ### 10.3 Alternative providers (v0.2)
 
@@ -314,13 +315,13 @@ Pipeline: text → normalise (numbers, units, times) → `piper-phonemize` (espe
 
 ### 11.2 Sentence chunking
 
-Core owns chunking: it splits the LLM stream on sentence boundaries (`.?!;:` followed by space, plus a 120-character soft limit) and sends one `speak{seq}` per sentence as soon as it is complete. The audio service synthesizes in order, starts playback on the first sentence's first PCM chunk, and keeps synthesizing the next sentence while the current one plays. **Target: first audio ≤ 200 ms after the first `speak` arrives** (G6 stage check, 12-word sentence).
+Core owns chunking: it splits the LLM stream on sentence boundaries (`.?!;:` followed by space, plus a 120-character soft limit) and sends one `speak{seq}` per sentence as soon as it is complete. So that the final sentence can carry `last: true`, the newest complete sentence is held until the next one starts or the stream ends (one token of delay, never a whole sentence). The audio service synthesizes in order, starts playback on the first sentence's first PCM chunk, and keeps synthesizing the next sentence while the current one plays. **Target: first audio ≤ 200 ms after the first `speak` arrives** (G6 stage check, 12-word sentence).
 
 Number, unit and abbreviation normalization happens in the audio service before synthesis (`audio/beepboop_audio/tts/normalize_<locale>.py`): "10:30" → "ten thirty", "72°F" → "seventy-two degrees", "Dr." → "doctor". The LLM is told to write for the ear ([LLM_PROVIDERS §7](LLM_PROVIDERS.md#7-voice-system-prompt-contract)); normalization is the backstop.
 
 ### 11.3 Cached clips and earcons
 
-At startup, and whenever a profile's voice or rate changes, the service pre-renders a **clip set** per active voice into `/data/tts-cache/<voice>/<rate>/<sha(text)>.pcm`: every system phrase in §11.6 that has no `{placeholder}`, the short acks "Done.", "OK.", "Sure.", "Cancelled.", "Timer set.", and the claim-code digits 0–9 ([WEB_UI §5.1](WEB_UI.md#51-first-run-onboarding)). The ack keys are `done`, `ok`, `sure`, `cancelled` and `timer_set`. Which keys `speak{clip}` accepts, and what happens with an unknown one, is defined once in [ARCHITECTURE §4.2](ARCHITECTURE.md#42-event-catalog) (clip keys). Beyond the fixed set, an LRU of 200 recently synthesized sentences per voice makes repeated answers ("It's 7:30") instant. Entries are PCM16 16 kHz and total well under 50 MB; they are synthesized outputs, not captured audio.
+At startup, and whenever a profile's voice or rate changes, the service pre-renders a **clip set** per active voice and rate, held in RAM only (no cache file, so a filesystem scan for audio bytes is unambiguous): every system phrase in §11.6 that has no `{placeholder}`, the short acks "Done.", "OK.", "Sure.", "Cancelled.", "Timer set.", and the claim-code digits 0–9 ([WEB_UI §5.1](WEB_UI.md#51-first-run-onboarding)). The ack keys are `done`, `ok`, `sure`, `cancelled` and `timer_set`. Which keys `speak{clip}` accepts, and what happens with an unknown one, is defined once in [ARCHITECTURE §4.2](ARCHITECTURE.md#42-event-catalog) (clip keys). Beyond the fixed set, an LRU of 200 recently synthesized sentences per voice makes repeated answers ("It's 7:30") instant. Entries are PCM16 16 kHz and total well under 50 MB; they are synthesized outputs, not captured audio, and are rebuilt after a restart.
 
 ### 11.4 Playback mixer
 
@@ -330,7 +331,7 @@ One playback stream, three lanes, mixed in software with a 20 ms period:
 |---|---|---|
 | `earcon` | state chimes, PIN prompt tone | Plays over anything; never queued. |
 | `speech` | TTS and clips for the active turn | FIFO by `seq`; `cancel` flushes it. |
-| `alert` | timers, alarms, announcements (`speak{clip: "alarm"}` or text via `ctx.announce`) | Ducks `speech` by −12 dB while active; repeats until acknowledged by voice ("stop"), button or UI. |
+| `alert` | timers, alarms, announcements (`speak{clip: "alarm"}` or text via `ctx.announce`) | Ducks `speech` by −12 dB while active; repeats until acknowledged by voice ("stop"), button or UI (each reaches audio as `cancel` for the alert's turn), at most 5 minutes (target). |
 
 Volume is a household setting plus a per-profile offset; alerts have their own floor so a quiet evening setting does not silence an alarm. Ducking HA media players on wake is a v0.2 core hook, not an audio-service concern.
 
@@ -345,6 +346,7 @@ The fixed sentences the device speaks on behalf of policy and the turn loop. Cor
 | Key | Text (en-US default) | When |
 |---|---|---|
 | `claim.code` | "Your setup code is {d1} {d2} {d3} {d4} {d5} {d6}." | First run, spoken digit by digit ([WEB_UI §5.1](WEB_UI.md#51-first-run-onboarding)). |
+| `claim.fingerprint` | "My certificate fingerprint starts {f1} {f2} {f3} {f4} {f5} {f6}." | Right after `claim.code`: the first six byte-groups of the Tier-0 CA fingerprint, so the person compares them with `/ca` out of band ([WEB_UI §7](WEB_UI.md#7-https-tiers)). |
 | `approval.prompt` | "To {summary}, approve on your phone." | Policy returned `confirm(["web"])`. |
 | `approval.prompt_pin` | "To {summary}, approve on your phone, or say your PIN." | `confirm(["web", "pin"])`; the profile has a PIN. |
 | `approval.waiting` | "Still waiting for your phone." | Once, when the approval window is extended ([IDENTITY_AND_TRUST §8](IDENTITY_AND_TRUST.md#8-second-factor)). |
@@ -377,7 +379,7 @@ Two rules, enforced in core's phrase selection and tested:
 The default second factor is **Web UI confirm** ([ADR 0014](adr/0014-second-factor-web-confirm.md), [IDENTITY_AND_TRUST §8](IDENTITY_AND_TRUST.md#8-second-factor)). A profile may opt in to a **spoken PIN fallback**, captured and verified entirely inside the audio service, so the digits never reach core, the LLM, the transcript or the turn log. The event contract (`capture_pin` → `pin.result`) is [ARCHITECTURE §4.2](ARCHITECTURE.md#42-event-catalog); length, timeout, attempts and lockout are defined once in the spoken-PIN rules of [IDENTITY_AND_TRUST §8](IDENTITY_AND_TRUST.md#8-second-factor). Audio-side rules:
 
 - On `capture_pin` the service speaks `pin.prompt`, plays the `pin` earcon, sets the LED amber and opens a zipformer stream in `mode: "pin"`: the digit vocabulary ("zero"…"nine", "oh") is strongly biased, no `stt.partial` or `stt.final` is emitted, and the decoded text is discarded after verification.
-- At EOS the words are mapped to digits and verified with argon2id against the `pin_hash` core sent (parameters chosen so verification takes ≤ 150 ms on a Pi 4). Only `ok | mismatch | timeout | cancelled` is returned; the hash and the digit buffer are zeroed.
+- At EOS the words are mapped to digits and verified with argon2id against the `pin_hash` core sent (parameters chosen so verification takes ≤ 150 ms on a Pi 4). Common homophones count ("oh", "to", "for", "ate", "won"); any other word is a `mismatch`, silence until `timeout_ms` is a `timeout`. Only `ok | mismatch | timeout | cancelled` is returned; the hash reference is dropped and the digit buffer (a `bytearray`) is zeroed.
 - Core enforces lockout and speaks `pin.locked`; a `mismatch` speaks `pin.mismatch`.
 - The amber LED tells bystanders a PIN is being spoken; the UI warns that a PIN said in a shared room can be overheard and recommends Web UI confirm.
 
@@ -410,7 +412,7 @@ The XVF3800 has an RGB LED ring and a mute button driven through the vendor cont
 | boot / ready | `ready` — three tones, 250 ms | green sweep once | on 1 s |
 | claim mode (first run) | spoken digits (`claim.code`) | rainbow sweep | blink pattern of digits |
 
-Earcons are generated WAVs in `audio/assets/earcons/` (sine-based, −12 dBFS, ≤ 250 ms, 16 kHz), so there is no license question; a household can replace them with a theme directory under `/models/earcons/`. The `wake` earcon plays within 150 ms of `t_wake` (target) and is the first contractual audible feedback of every turn.
+Earcons are synthesized in-process at start-up from the tone table in `audio/beepboop_audio/pipeline/earcons.py` (sine-based, −12 dBFS, ≤ 250 ms except the 1 s `alarm` pattern, 16 kHz), so there are no asset files and no license question; a household can replace them with a theme directory under `/models/earcons/`. The `wake` earcon plays within 150 ms of `t_wake` (target) and is the first contractual audible feedback of every turn.
 
 ### 13.2 Mute
 
@@ -454,7 +456,7 @@ The only place throttling behaviour is specified; [ARCHITECTURE §10](ARCHITECTU
 |---|---|
 | Internet down / Bedrock error | Fast path answers device commands; other requests get the `offline` phrase (cached clip) within the feedback bound. |
 | Cloud STT selected but offline (v0.2) | Local zipformer, with one "working offline" notice per outage. |
-| CPU thermal throttling (`health.throttled`, from `vcgencmd get_throttled`) | Health page warning; the service lowers STT `max_active_paths` to 2 and switches to the `low` voice until temperature recovers. It **never** reduces thread counts: fewer threads make every stage slower and the Pi hotter for longer. |
+| CPU thermal throttling (`health.throttled`, from `vcgencmd get_throttled`) | Health page warning; the service lowers STT `max_active_paths` to 2 and switches to the `low` voice until temperature recovers (v0.1 reports `throttled`; the automatic switch is not built yet). It **never** reduces thread counts: fewer threads make every stage slower and the Pi hotter for longer. |
 | Audio container restarts | `ready` earcon, LED sweep; the in-flight turn is lost and core logs it as `aborted`. |
 
 ---
@@ -586,7 +588,8 @@ Notes for implementers:
 - `WakeProvider.process` runs on the capture thread and must return in well under 10 ms. Silero VAD runs on the same thread and is not a provider.
 - `SttProvider.stream` must honor cancellation (`aclose()`) within 50 ms and must emit exactly one `Final`, possibly with empty text.
 - `TtsProvider.synth` yields the first chunk as early as the engine allows; the mixer starts playback on it. Providers resample to 16 kHz themselves.
-- Cloud providers receive a `beepboop_audio.net.Session` (TLS, timeouts, retry once) rather than opening their own sockets, so the privacy page can list every outbound destination.
+- The streaming members are declared `def …(…) -> AsyncIterator[…]` in `types.py` so an `async def` generator satisfies them.
+- Cloud providers (v0.2) receive a `beepboop_audio.net.Session` (TLS, timeouts, retry once) rather than opening their own sockets, so the privacy page can list every outbound destination.
 - `SpeakerIdentifier` is deliberately not pluggable: it is the policy-relevant part, specified here and tested by `bench speaker`. Only the embedder swaps.
 - No provider may write PCM to disk or keep it beyond the call that received it.
 

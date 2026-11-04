@@ -1,0 +1,101 @@
+# evals.yaml — utterance → expected tool/args/decision (docs/MODULES.md §12).
+# Offline: policy decision per case and the handler in dry-run against these fixtures.
+
+api: 1
+module: persona
+freeze_time: "2026-11-01T09:00:00-08:00"
+
+fixtures:
+  settings: {name: beepboop, style: warm, verbosity: normal, voice: en_US-lessac-low, speech_rate: 1.0}
+  profiles:
+    alice: {kind: member, locale: en-US, tz: America/Los_Angeles}
+  kv:
+    household: {}
+    alice: {}
+    admin:
+      overrides: {speech_rate: 0.7}
+
+cases:
+  # ---- persona.set
+  - id: speak_slower
+    utterance: "speak slower"
+    profile: alice
+    expect:
+      tool: persona.set
+      args: {speech_rate: slower}
+      effects: [{kind: kv, op: set, key: overrides}]
+      speak_contains: ["I'll speak slower"]
+      path: fast
+
+  - id: keep_it_short
+    utterance: "keep your answers short"
+    profile: alice
+    expect:
+      tool: persona.set
+      args: {verbosity: brief}
+      speak_contains: ["keep it brief"]
+
+  - id: slower_and_shorter
+    utterance: "slower, and shorter answers please"
+    profile: alice
+    expect:
+      tool: persona.set
+      args: {speech_rate: slower, verbosity: brief}
+      speak_contains: ["speak slower and I'll keep it brief"]
+
+  - id: already_slowest
+    utterance: "even slower"
+    profile: admin
+    expect:
+      tool: persona.set
+      args: {speech_rate: slower}
+      speak_contains: ["as slow as I go"]
+
+  - id: back_to_normal
+    utterance: "go back to normal"
+    profile: alice
+    expect:
+      tool: persona.set
+      args: {reset: true}
+      speak_contains: ["household defaults"]
+
+  - id: vague_change
+    utterance: "talk differently"
+    profile: alice
+    expect:
+      tool: persona.set
+      ask_user: true
+
+  # ---- policy: denials (Child and Guest presets have no persona.* grant)
+  - id: child_denied
+    utterance: "talk faster"
+    profile: child
+    expect:
+      tool: persona.set
+      denied: true
+
+  - id: guest_denied
+    utterance: "speak slower"
+    profile: guest
+    expect:
+      tool: persona.set
+      denied: true
+
+  # ---- negative: not this module
+  - id: not_mine_volume
+    utterance: "turn it down, you're too loud"
+    profile: alice
+    expect:
+      tool: null                             # media.control volume
+
+  - id: not_mine_stop
+    utterance: "stop"
+    profile: alice
+    expect:
+      tool: null                             # cancels the reply; core action
+
+  - id: not_mine_rename
+    utterance: "change your name to Jarvis"
+    profile: alice
+    expect:
+      tool: null                             # household setting, admin in the app

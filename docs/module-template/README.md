@@ -13,7 +13,7 @@ Related: [../MODULES.md](../MODULES.md) · [../MCP.md](../MCP.md) · [../IDENTIT
 | File | Purpose | Who reads it | Lint |
 |---|---|---|---|
 | [manifest.yaml](manifest.yaml) | The contract: id, scope, egress, settings schema, secrets, tools with risk and schemas | lint, registry, Web UI, MCP | L1, L3, L4, L7, L10–L13, L17, L18 |
-| [module.py](module.py) | `class Module(beepboop.Module)`: hooks and `@tool` handlers | core | L2, L9 |
+| [module.py](module.py) | `from beepboop.module import Module`: hooks and `@tool` handlers | core | L2, L9 |
 | [AGENT.md](AGENT.md) | How the model should use the tools (fetched with `read_guide`) | the LLM | L4, L5, L6, L14, L16 |
 | [SETUP.md](SETUP.md) | How a person connects the module in the Web UI | humans | L15 |
 | [evals.yaml](evals.yaml) | Utterance → expected tool/args/decision; fixtures for dry-run and unit tests | `module check`, CI | L8 |
@@ -28,7 +28,7 @@ uv run beepboop module new parcel_tracker --scope profile --category productivit
 # HA-backed module instead (docs/MODULES.md §5.7): uv run beepboop module new pool_pump --ha --scope household
 ```
 
-This copies the six files to `modules/parcel_tracker/`, replaces `parcel` with `parcel_tracker` in ids, tool names, docstrings, eval and test references, sets `scope`/`category`, inserts `TODO` markers where carrier-specific code lives, and runs `beepboop module check modules/parcel_tracker` so you start green.
+This copies the six files to `modules/parcel_tracker/`, replaces `parcel` with `parcel_tracker` in ids, tool names, docstrings, eval and test references (variables too: `parcels` becomes `parcel_trackers`; rename what reads oddly), sets `scope`/`category`, inserts `TODO` markers where carrier-specific choices live (`grep -n TODO modules/parcel_tracker`), runs lint and the offline evals so you start green, and prints the next steps. `--ha` only adds the `requires.ha` block; for the HA-backed shape copy `modules/weather` instead ([../MODULES.md §13](../MODULES.md#13-cli)).
 
 ## Walkthrough
 
@@ -39,7 +39,7 @@ This copies the six files to `modules/parcel_tracker/`, replaces `parcel` with `
 5. **`SETUP.md`.** ≥ 10 lines unless the module has no settings or secrets (L15). Section 3 names the real path: Integrations → `<module>` → *Your connection* → *Test and save*. Section 6 (Privacy) matches `egress`.
 6. **`evals.yaml`.** ≥ 3 cases per tool, ≥ 1 negative case (`tool: null`) per module, ≥ 1 denial case if any tool is `personal` or `critical` (L8). Fixtures follow [../MODULES.md §12.1](../MODULES.md#121-format): `kv: {household: {...}, <profile>: {...}}`, `http`, `secrets`, and `ha.states` for HA-backed modules. Every AGENT.md example's expected reply must agree with these fixtures (rubric R4).
 7. **`tests/test_module.py`.** `ctx = fake_context(MODULE_DIR, profile="alice")` gives a dry-run `ToolContext` seeded from the same fixtures; `await Module().track(ctx)` and assert on the dict and `ctx.effects`. Test pure helpers directly ([../MODULES.md §12.4](../MODULES.md#124-unit-tests)).
-8. **Check and drive it.** `uv run beepboop module check modules/<id>` until green, then `uv run beepboop chat --as alice --dry-run --trace` and talk to it. `module check --rubric` prints `auto N/16, reviewer rows R2,R3,R6 pending`.
+8. **Check and drive it.** `uv run beepboop module check modules/<id>` until green, then `uv run beepboop chat --seed --fake-llm --as alex --dry-run --trace` and talk to it (`--seed` creates Alex, Sam and Robin on a fresh database; `--fake-llm` picks the tool from your `evals.yaml` so the module is reachable without an LLM key). `module check --rubric` prints one line, `rubric: N/16 so far (bar 12): R1=… R4=… R5=… R7=… R8=…; pending R2, R3, R6 (reviewer)`.
 9. **Catalog row and PR.** Add a row to [../MODULES.md §16](../MODULES.md#16-catalog) and open a PR with the [CONTRIBUTING.md](../../CONTRIBUTING.md) checklist.
 
 ## Scaffold by hand

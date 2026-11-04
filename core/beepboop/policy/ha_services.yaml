@@ -1,0 +1,60 @@
+# The single source for HA service classes and tiers (HOME_ASSISTANT §9 renders this;
+# IDENTITY_AND_TRUST §6.3 links here). Loaded by beepboop.policy.ha_services.
+#
+# classes:
+#   direct   : tier from (domain, service, device_class)
+#   indirect : entity-keyed, default critical, dispositioned in the inbox (ha_entities.declared_risk)
+#   blocked  : never callable, for any principal -> PolicyDenied("service_blocked")
+# Anything not listed is treated as blocked ("SERVICE_NOT_ALLOWED", logged).
+
+direct:
+  light: {"*": act}
+  switch: {"*": act}
+  fan: {"*": act}
+  humidifier: {"*": act}
+  media_player: {"*": act}
+  climate: {set_temperature: act, set_hvac_mode: act, set_preset_mode: act, turn_on: act, turn_off: act}
+  cover:
+    open_cover: act
+    close_cover: act
+    set_cover_position: act
+    stop_cover: act
+    toggle: act
+  music_assistant: {play_media: act, search: read, get_queue: read}
+  lock: {lock: act, unlock: critical, open: critical}
+  alarm_control_panel:
+    alarm_arm_home: act
+    alarm_arm_away: act
+    alarm_arm_night: act
+    alarm_arm_vacation: act
+    alarm_arm_custom_bypass: act
+    alarm_disarm: critical
+  vacuum: {start: act, return_to_base: act, stop: act, pause: act}
+  siren: {"*": critical}
+
+# device_class overrides for direct services: (domain, device_class) -> tier floor
+device_class_floor:
+  cover: {garage: critical, gate: critical, door: critical}
+
+indirect:
+  - script
+  - scene
+  - automation
+  - input_boolean
+  - input_select
+  - input_number
+  - input_button
+  - button
+  - select
+
+blocked:
+  - homeassistant
+  - rest_command
+  - shell_command
+  - python_script
+  - hassio
+  - notify
+  - persistent_notification
+  - system_log
+  - logger
+  - recorder

@@ -1,0 +1,10 @@
+# /etc/systemd/system/beepboop-host.service: one run of the host health script
+# (OPERATIONS §5). Writes /srv/beepboop/run/host.json and restarts unhealthy containers.
+[Unit]
+Description=beepboop host status (host.json) and unhealthy-container restart
+After=docker.service
+
+[Service]
+Type=oneshot
+Nice=10
+ExecStart=/usr/bin/python3 /usr/local/lib/beepboop/beepboop_host.py host-json

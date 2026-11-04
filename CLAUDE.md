@@ -17,7 +17,7 @@ Related: [README.md](README.md) · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 
 
 ## 2. Current phase
 
-**M0 in progress: code done, hardware pending (2026-11-03).** Everything under `docs/` is still the specification. All session-doable M0 steps (§12) are built and green on x86; every gate (G1–G7) and verification item (V1–V5) is waiting on the owner with the Pi. The owner's ordered to-do list is [tools/M0_OWNER_CHECKLIST.md](tools/M0_OWNER_CHECKLIST.md); the dated status table is in [docs/ROADMAP.md](docs/ROADMAP.md#m0-prove-the-pi). The M0 spec findings were resolved on 2026-11-03 (owner decisions D1, D3, D4 and the move to GPL-3.0-or-later; see [ADR 0019](docs/adr/0019-shared-protocol-package-and-negotiated-embedding-dim.md), [ADR 0020](docs/adr/0020-gpl-3-and-espeak-phonemiser.md) and [ROADMAP M0](docs/ROADMAP.md#m0-prove-the-pi)); D2 (AWS profile) is still open. Do not start v0.1 feature work until the M0 gates have passed on real hardware; if a gate fails the design changes (cloud STT default or 8 GB minimum), and v0.1 code written before that would be wasted.
+**M0 code done, hardware pending; v0.1 software integrated on x86, Pi verification pending (2026-11-04).** Everything under `docs/` is still the specification. All session-doable M0 steps (§12) are built and green on x86; every gate (G1–G7) and verification item (V1–V5) is waiting on the owner with the Pi. The owner's ordered to-do list is [tools/M0_OWNER_CHECKLIST.md](tools/M0_OWNER_CHECKLIST.md); the dated status table is in [docs/ROADMAP.md](docs/ROADMAP.md#m0-prove-the-pi). The M0 spec findings were resolved on 2026-11-03 (owner decisions D1, D3, D4 and the move to GPL-3.0-or-later; see [ADR 0019](docs/adr/0019-shared-protocol-package-and-negotiated-embedding-dim.md), [ADR 0020](docs/adr/0020-gpl-3-and-espeak-phonemiser.md) and [ROADMAP M0](docs/ROADMAP.md#m0-prove-the-pi)); D2 (AWS profile) is still open. Per the owner's sequencing ruling ([DECISIONS.md, 2026-11-03](docs/research/DECISIONS.md)), v0.1 software work proceeds in parallel with the M0 hardware gates: the shared contracts (`db`, `policy`, `registry`, `beepboop.module`, `beepboop.testing`, the `agent`/`api`/service skeletons) are in place and the contract map is [core/README.md](core/README.md). A failing gate still triggers its ROADMAP fallback ADR, and v0.1 code adapts. All v0.1 tracks (agent, audio, HA, modules, API/UI, ops) are built and wired into one system: `beepboop serve` boots core and connects to `beepboop-audio` over the event socket through `core/beepboop/audio_bridge.py`, and `tests/system/` runs wake → speaker ID → fast path, an LLM tool turn and a web-approved `critical` action end to end with a fake LLM and a fake HA (and once with the real audio service on fake models). The per-criterion status (done / code-done, pending Pi / not done) and the remaining non-Pi gaps are in [ROADMAP v0.1](docs/ROADMAP.md#v01-one-house-that-knows-your-voice). Hardware- and Pi-only acceptance items are built with fakes and tests and marked "pending on Pi" there; never claim them as passed, and no number is measured yet.
 
 ## 3. Repository layout
 
@@ -29,15 +29,20 @@ beepboop/
 │   └── beepboop_protocol/   audio ⇄ core event protocol (models, JSON-lines codec, socket server/client, fake); log.py = structlog setup + redaction
 ├── core/                    python package `beepboop` (container beepboop-core)
 │   └── beepboop/
-│       ├── agent/           turn loop, fast path, sentence chunking, conversation and reply windows, context assembly
-│       ├── policy/          Principal, risk tiers, grants, taint rule, ceilings, approvals (second factor)
-│       ├── registry/        tool registry, manifest loader, entity resolver, find_tools / read_guide
+│       ├── service.py       how core starts: db → secrets → policy state → registry + modules → audio channel → api
+│       ├── agent/           turn loop, fast path (grammar/<locale>.yaml), sentence chunking, conversation and reply windows, context assembly
+│       ├── policy/          Principal, risk tiers, grants, taint rule, ceilings, approvals (second factor), presets/*.yaml, ha_services.yaml
+│       ├── registry/        tool registry + dispatch, manifest model/loader/lint, entity resolver, find_tools / read_guide, module dev-kit CLI
+│       ├── module/          the module SDK (`beepboop.module`: Module, ToolContext, @tool, ToolError, Protocols)
+│       ├── testing/         `beepboop.testing`: fake ToolContext, evals.yaml model and offline runner
 │       ├── ha/              HA WebSocket client, state cache, registry index (the only code holding the HA token)
 │       ├── mcp/             external /mcp door (Streamable HTTP, OAuth 2.1, PATs); thin wrapper over registry
 │       ├── providers/llm/   LLMProvider protocol, bedrock/, openai_compat/, conformance suite
-│       ├── api/             FastAPI routes (/api, OpenAPI), session auth, static SPA mount
+│       ├── api/             FastAPI app factory, routers/, session auth, problem+json, OpenAPI generation, static SPA mount
 │       ├── secrets/         envelope encryption (KEK, DEKs, SecretStore): the only code that decrypts
-│       └── db/              SQLite schema, migrations, single writer task
+│       ├── audio_bridge.py  core's end of the audio socket: profiles.sync, VoiceSession, speak/earcon/cancel/capture_pin, enrollment, claim code, announce
+│       ├── health.py        the OPERATIONS §11 health report; scheduler.py: the nightly jobs
+│       └── db/              SQLite schema (migrations/*.sql), single writer task, repo/*, retention, backup (bundles, restore)
 ├── audio/                   python package `beepboop_audio` (container beepboop-audio)
 │   └── beepboop_audio/
 │       ├── types.py         the provider Protocols and dataclasses (VOICE_PIPELINE §17 is the spec)
@@ -51,10 +56,12 @@ beepboop/
 │   └── google_calendar/  spotify/                                           (v0.2)
 ├── ui/                      SvelteKit 5 (runes), adapter-static, TS strict, Bits UI, generated API client
 ├── deploy/                  compose.yaml, compose.cloud-speech.yaml (v0.2), caddy/Caddyfile, .env.example,
-│                            ports.yaml (per-profile firewall allowlist), nftables rule, systemd units, install.sh
+│                            ports.yaml (per-profile firewall allowlist), nftables rule, install.sh, firmware.lock,
+│                            docker/ (core, audio, caddy images), host/ (the host CLI), bin/, systemd/, udev/
 ├── tools/
 │   ├── train_wakeword/      "Hey beepboop" model pipeline (synthetic clips + negatives + fine-tune)
 │   └── bench/               `beepboop bench`: concurrent latency benchmark + M0 gates; corpus/, record_fixture.py, results/
+├── tests/system/            cross-service system tests: core + audio socket (scripted peer and the real audio service on fake models) + fake LLM + fake HA
 ├── models/                  downloaded at install; manifest.yaml and the generated LICENSES.md are checked in and linted
 └── docs/                    the spec (map in README), docs/adr/, docs/module-template/, docs/research/ (read-only provenance)
 ```
@@ -149,33 +156,35 @@ The template, numbering, statuses and process live in one place: [docs/adr/READM
 
 ## 9. Command registry
 
-Most of these do not exist yet; as of M0 only `version`, `bench` and `llm probe` (and `beepboop-audio version`) do. Build the rest with these names so docs, CI and habits converge. This table is the complete list of `beepboop` commands used anywhere in the docs; if you add a command, add a row. **Host** commands run from `/usr/local/bin/beepboop`, a host script that runs its own subcommands and forwards everything else into core with `docker compose -f /srv/beepboop/deploy/compose.yaml exec core beepboop ...` ([docs/OPERATIONS.md §5](docs/OPERATIONS.md)). **Core** commands run inside the core container (or via `uv run` in development). No container mounts `docker.sock`.
+Every command below exists as of v0.1 except `enroll` (voice enrolment is the web UI's People › <name> › Voice flow; a CLI for it is a v0.1 gap listed in ROADMAP) and the host-side `doctor`/`update`/`logs`/`models` wrappers, which run only on a Pi. Keep these names so docs, CI and habits converge. This table is the complete list of `beepboop` commands used anywhere in the docs; if you add a command, add a row. **Host** commands run from `/usr/local/bin/beepboop`, a host script that runs its own subcommands and forwards everything else into core with `docker compose -f /srv/beepboop/deploy/compose.yaml exec core beepboop ...` ([docs/OPERATIONS.md §5](docs/OPERATIONS.md)). **Core** commands run inside the core container (or via `uv run` in development). No container mounts `docker.sock`.
 
 | Command | Runs on | Purpose | Owning doc |
 |---|---|---|---|
-| `beepboop doctor [--preflight]` | host | Re-run the install preflight; list every listening non-loopback socket and flag any not in `deploy/ports.yaml`; check cgroup memory enforcement, firmware, nftables, HA bind | [OPERATIONS §5, §12](docs/OPERATIONS.md) |
-| `beepboop update [--to <release>]` | host | Snapshot, pull by digest, switch, verify, roll back | [OPERATIONS §9](docs/OPERATIONS.md) |
-| `beepboop db restore <file>` | host | Stop core, swap the database from a backup, restart, verify | [OPERATIONS §10](docs/OPERATIONS.md#10-backups-and-restore) |
+| `beepboop doctor [--preflight]` | host | Re-run the install preflight; list every listening non-loopback socket and flag any not in `deploy/ports.yaml`; check cgroup memory enforcement, nftables, HA bind (firmware check pending on Pi) | [OPERATIONS §5, §12](docs/OPERATIONS.md) |
+| `beepboop update [--to <release>] [--manifest <file\|url>]` | host | Snapshot, pull by digest, switch, verify, roll back; writes `run/update.json` | [OPERATIONS §9](docs/OPERATIONS.md) |
+| `beepboop db restore <file> [--identity <keyfile>]` | host (+ core) | Host: stop core and HA, run core's `db restore` in a one-off core container, start, verify. Core: decrypt with the recovery key, verify, swap the database, re-wrap the DEKs, restore HA config | [OPERATIONS §10](docs/OPERATIONS.md#10-backups-and-restore), [DATA_AND_PRIVACY §11](docs/DATA_AND_PRIVACY.md#11-backups) |
 | `beepboop logs [--turn <id>]` | host | Tail compose logs; `--turn` joins both containers' lines for one turn | [OPERATIONS §11](docs/OPERATIONS.md#11-observability) |
-| `beepboop claim --reopen` | host | Speak a fresh claim code without wiping data (audited) | [OPERATIONS §6](docs/OPERATIONS.md), [WEB_UI §5.1](docs/WEB_UI.md) |
-| `beepboop models verify \| update` | host | Verify sha256 of `/srv/beepboop/models` against `models/manifest.yaml`; `update` re-downloads and re-verifies | [OPERATIONS §13](docs/OPERATIONS.md#13-model-and-licensing-hygiene) |
-| `beepboop serve` | core (dev) | Run core locally (FastAPI + agent + registry) against a dev SQLite file | this file |
-| `beepboop-audio serve [--fake-mic <wav>]` | audio (dev) | Run the audio service; `--fake-mic` feeds a file instead of ALSA | [VOICE_PIPELINE](docs/VOICE_PIPELINE.md) |
+| `beepboop claim --reopen` | host (forwarded to core) | Speak a fresh claim code without wiping data (audited) | [OPERATIONS §6](docs/OPERATIONS.md), [WEB_UI §5.1](docs/WEB_UI.md) |
+| `beepboop models verify \| update` | host | Verify sha256 of `/srv/beepboop/models` against `models/manifest.yaml` (no network); `update` re-downloads and re-verifies; both run `beepboop_bench.models` from the audio image | [OPERATIONS §13](docs/OPERATIONS.md#13-model-and-licensing-hygiene) |
+| `beepboop serve` | core | Run core (FastAPI + SPA + agent + registry + scheduler + approval expiry) against the SQLite file; connects to the audio service at `BB_AUDIO_SOCKET` when set (dev: `tcp://127.0.0.1:<port>`) | this file, [core/README.md](core/README.md#how-core-starts) |
+| `beepboop-audio serve [--fake-mic <wav>] [--fake-providers] [--config] [--models] [--socket]` | audio (dev) | Run the audio service; `--fake-mic` feeds a file instead of ALSA, `--fake-providers` swaps the speech models for deterministic fakes | [VOICE_PIPELINE](docs/VOICE_PIPELINE.md) |
 | `beepboop version`, `beepboop-audio version` | core, audio | Print the installed workspace package versions (support and bug reports) | this file |
-| `beepboop health [--quiet]` | core | Health probe used by the compose healthcheck and `/api/health` | [OPERATIONS §11](docs/OPERATIONS.md#11-observability) |
-| `beepboop chat --as <profile> [--dry-run] [--trace]` | core | Text chat through the real policy path, no mic. The primary dev loop | [MODULES §13](docs/MODULES.md) |
-| `beepboop module new <id>` | core | Scaffold `modules/<id>/` from `docs/module-template/` | [MODULES §13](docs/MODULES.md) |
-| `beepboop module check <id\|path\|--all> [--llm]` | core | Lint L1–L15, token lint, import ban, evals (dry-run; `--llm` live) | [MODULES §13](docs/MODULES.md) |
-| `beepboop module list \| enable \| disable` | core | Inspect and toggle modules at runtime | [MODULES §13](docs/MODULES.md) |
-| `beepboop bench speaker\|stt\|tts\|wake\|aec\|endpoint\|llm\|e2e\|ram\|thermal\|all [--gates] [--json]` | core (+ audio) | Pipeline benchmark on the Pi; `--gates` is valid on `all` and exits non-zero if an M0 gate fails; results to `tools/bench/results/` | [OPERATIONS §11](docs/OPERATIONS.md#11-observability), [ROADMAP M0](docs/ROADMAP.md) |
+| `beepboop health [--quiet] [--url]` | core | Health probe used by the compose healthcheck: GET `/api/health`, exit 1 unless `ok` | [OPERATIONS §11](docs/OPERATIONS.md#11-observability) |
+| `beepboop chat --as <profile> [--dry-run] [--trace] [--seed] [--fake-llm]` | core | Text chat through the real policy path, no mic. The primary dev loop; `--seed` creates the dev household, `--fake-llm` picks tools from the modules' evals offline | [MODULES §13](docs/MODULES.md) |
+| `beepboop module new <id> [--ha] [--scope] [--category]` | core | Scaffold `modules/<id>/` from `docs/module-template/` and run `module check` once | [MODULES §13](docs/MODULES.md) |
+| `beepboop module check <id\|path\|--all> [--llm] [--show-card] [--rubric] [--json]` | core | Lint L1–L18, token budgets, import ban, evals (dry-run; `--llm` live, not wired until the agent loop has a provider) | [MODULES §13](docs/MODULES.md) |
+| `beepboop module schema [--check]` | core | Write (or verify) `core/beepboop/registry/manifest.schema.json` from the pydantic manifest model | [MODULES §4](docs/MODULES.md) |
+| `beepboop module list [--profile <id>] \| enable \| disable` | core | Inspect and toggle modules at runtime (`list` exists, with `--profile` showing what a person can call; `enable`/`disable` are not built in v0.1) | [MODULES §13](docs/MODULES.md) |
+| `beepboop api openapi [--out] [--check]` | core | Write `/api/openapi.json` with sorted keys for `pnpm --dir ui gen:api`; `--check` fails on drift | [WEB_UI §8](docs/WEB_UI.md) |
+| `beepboop bench speaker\|stt\|tts\|wake\|aec\|endpoint\|llm\|e2e\|ram\|thermal\|all [--gates] [--json]` | core (+ audio) | Pipeline benchmark on the Pi; `--gates` is valid on `all` and exits non-zero if an M0 gate fails; results to `tools/bench/results/` | [tools/bench/README.md](tools/bench/README.md#what-each-subcommand-reports), [ROADMAP M0](docs/ROADMAP.md) |
 | `beepboop llm probe [--profile] [--region] [--pairs] [--cold-gap-minutes] [--gate] [--out]` | core (dev) | Measure Bedrock TTFT for M0 gate G3 (warm, cold-TLS, cold-cache turns; at most 20 billed calls) | [LLM_PROVIDERS](docs/LLM_PROVIDERS.md), [ROADMAP G3](docs/ROADMAP.md) |
-| `beepboop db migrate \| backup` | core | Schema migrations; `VACUUM INTO` snapshot encrypted to the recovery key | [DATA_AND_PRIVACY §5, §11](docs/DATA_AND_PRIVACY.md) |
-| `beepboop keys rotate-dek` | core | New active data key; re-encrypt every row under it. **Not wired yet** (v0.1): `SecretStore.rotate_dek` / `rotate_kek` in `core/beepboop/secrets/` are the hooks it will call | [DATA_AND_PRIVACY §6.3](docs/DATA_AND_PRIVACY.md#63-envelope-encryption) |
-| `beepboop ca fingerprint` | core | Print the Tier-0 local CA root fingerprint for the `/ca` helper | [WEB_UI §7](docs/WEB_UI.md) |
-| `beepboop enroll <profile>` | core (dev) | CLI voice enrollment for development | [VOICE_PIPELINE §9](docs/VOICE_PIPELINE.md) |
-| `beepboop policy explain --as <profile> <tool> [args]` | core | Print the authorize decision and which grant produced it | [IDENTITY_AND_TRUST §7](docs/IDENTITY_AND_TRUST.md) |
+| `beepboop db migrate \| backup [--out FILE] [--recipient] [--destination]` | core | Schema migrations; the `age`-encrypted backup bundle to every destination (`--out` writes the bare checkpointed snapshot instead: the pre-update snapshot) | [DATA_AND_PRIVACY §5, §11](docs/DATA_AND_PRIVACY.md) |
+| `beepboop keys rotate-dek` | core | New active data key; re-encrypt every secret under it in one transaction; audited | [DATA_AND_PRIVACY §6.3](docs/DATA_AND_PRIVACY.md#63-envelope-encryption) |
+| `beepboop ca fingerprint [--cert <file>]` | core | Print the Tier-0 local CA root fingerprint the device speaks after the claim code (`/ca` helper) | [WEB_UI §7](docs/WEB_UI.md) |
+| `beepboop enroll <profile>` | core (dev) | CLI voice enrollment for development (**not built in v0.1**: use People › <name> › Voice) | [VOICE_PIPELINE §9](docs/VOICE_PIPELINE.md) |
+| `beepboop policy explain --as <profile> <tool> [args] [--via] [--tainted] [--risk]` | core | Print the authorize decision, the HA targets and which grant produced it, with the registered tool's tier and the real target extractor (`--risk` only for an unregistered tool) | [IDENTITY_AND_TRUST §7](docs/IDENTITY_AND_TRUST.md) |
 
-Development helpers that are not `beepboop` subcommands: `uv sync` (install the workspace from the lockfile), `uv run pytest` (all unit tests; `-m conformance` for provider suites), `ruff check --fix . && ruff format . && pyright`, and `pnpm --dir ui dev | build | gen:api`.
+Development helpers that are not `beepboop` subcommands: `uv sync` (install the workspace from the lockfile), `uv run pytest` (all unit tests; `-m conformance` for provider suites), `ruff check --fix . && ruff format . && pyright`, and `pnpm --dir ui dev | build | gen:api | check | test | test:e2e`. `test:e2e` (Playwright) and `pnpm --dir ui fake-core --seed` run the built SPA against `python -m beepboop.api.devserver`, the real `/api` over a temp SQLite file plus a dev-only `/api/_dev` router that stands in for the device ([WEB_UI §8](docs/WEB_UI.md#8-api-conventions)).
 
 ## 10. Testing strategy
 
@@ -184,11 +193,12 @@ Development helpers that are not `beepboop` subcommands: `uv sync` (install the 
 | Unit | Policy decisions (property-based), resolver fuzzy matching, event parsing, fast-path grammar, DB migrations, redaction processors | `pytest` next to code; runs on every PR on x86 |
 | Provider conformance | Every `LLMProvider`, `SttProvider`, `TtsProvider`, `WakeProvider`, `SpeakerProvider` against the shared suite with recorded fixtures | `pytest -m conformance`; live variants nightly with credentials |
 | Module evals | `evals.yaml` utterance → expected tool, args, profile, allow/deny. Bar: ≥ 3 cases per tool and ≥ 1 denial; ≥ 90 % tool selection live. Dry-run on every PR (no LLM, recorded tool-choice fixtures); `module check --llm` against Bedrock nightly | `beepboop module check` |
+| System | Core ⇄ audio over the real socket, fake LLM, fake HA: fast path, LLM tool turn, web-approved `critical` action, offline commands, reconnect, health report; one run with the real audio service on fake models | `tests/system/`, in the default `pytest` run on x86 |
 | Contract tests | HA WebSocket client against a pinned HA container; MCP door against the pinned `mcp` SDK client | `docker compose -f deploy/test.yaml` in CI |
 | Bench on real Pi | `beepboop bench all --gates` on a self-hosted Pi 4 runner, HA running, 4 GB and 8 GB variants. Runs only on pushes to protected branches and maintainer-labelled PRs (never on fork `pull_request`), on an ephemeral runner in an isolated VLAN with no HA tokens; the waterfall and `results/*.json` are published as CI artifacts | Required for merges to `main` that touch `audio/` or `agent/` |
 | UI | `vitest` unit; Playwright for claim-code onboarding, enrollment, pending-approval confirm | On every PR |
 | Security | Import-ban grep (incl. `beepboop.ha`), secret-redaction tests, dependency audit, `models/LICENSES.md` lint, `modules/*/LICENSES.md` aggregation | On every PR |
-| Shell | `shellcheck` on every shipped shell script (`deploy/install.sh`, `tools/probes/*/*.sh`). **TODO:** not in CI yet; add it with `install.sh` (v0.1) | On every PR (planned) |
+| Shell | `shellcheck` on every shipped shell script (`deploy/install.sh`, `deploy/bin/beepboop`, `tools/probes/*/*.sh`) | On every PR (`repo-checks` job) |
 | Doc lint | Relative links resolve; every `<module>.<verb>` identifier in `docs/*.md` exists in [MODULES §16](docs/MODULES.md) or [MCP §4](docs/MCP.md); UI paths match [WEB_UI §3](docs/WEB_UI.md); numbers carry "measured" or "target" | On every PR |
 
 Measured numbers go into the docs with the date and Pi variant; unmeasured numbers stay marked "target".

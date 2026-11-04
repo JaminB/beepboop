@@ -29,6 +29,9 @@ from aiohttp.test_utils import TestServer
 
 from beepboop.secrets import Argon2Params, SecretStore, create_passphrase_kek
 
+from .fake_ws import FakeHAWebSocket, serve
+from .rig import Rig, build_rig
+
 STEPS = ["user", "core_config", "analytics", "integration"]
 HA_VERSION = "2026.10.3"
 
@@ -288,3 +291,23 @@ async def store(tmp_path: Path) -> AsyncIterator[SecretStore]:
         yield secret_store
     finally:
         await secret_store.close()
+
+
+# ------------------------------------------------- v0.1: the WebSocket stack --
+
+
+@pytest.fixture
+def fake_ws() -> FakeHAWebSocket:
+    return FakeHAWebSocket()
+
+
+@pytest.fixture
+async def ws_url(fake_ws: FakeHAWebSocket) -> AsyncIterator[str]:
+    async for url in serve(fake_ws):
+        yield url
+
+
+@pytest.fixture
+async def rig(tmp_path: Path, ws_url: str, fake_ws: FakeHAWebSocket) -> AsyncIterator[Rig]:
+    async for built in build_rig(tmp_path, ws_url, fake_ws):
+        yield built

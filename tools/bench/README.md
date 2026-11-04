@@ -4,12 +4,32 @@ The concurrent pipeline benchmark and the M0 go/no-go gates (M0 steps 5, 6 and t
 9-12). It is the `beepboop-bench` workspace package (import `beepboop_bench`) with no console
 script of its own: core mounts `beepboop_bench.cli:app` as `beepboop bench`.
 
-- What each subcommand reports: [OPERATIONS §11](../../docs/OPERATIONS.md#11-observability).
+- What each subcommand reports: [below](#what-each-subcommand-reports) (moved here from OPERATIONS §11, which links to it).
 - Gate thresholds G1-G7: only in [ROADMAP M0](../../docs/ROADMAP.md#m0-prove-the-pi);
   `beepboop_bench/gates.py` transcribes them and is tested against those numbers.
 - Results: [`results/`](results/README.md) (`<date>-<host>.json`, committed).
 - Corpus: `corpus/` (recorded on the owner's bench machine with `record_fixture.py`; git-ignored).
 - Synthetic CI bench: [`synthetic/`](synthetic/README.md).
+
+## What each subcommand reports
+
+`beepboop bench` runs inside the audio and core containers against a fixture corpus (`tools/bench/corpus/`, recorded with `tools/bench/record_fixture.py` through an XVF3800: WAVs with expected transcript, speaker and intent). `--gates` is valid on `all` only. **Gate thresholds live in one place, the M0 table in [ROADMAP M0](../../docs/ROADMAP.md#m0-prove-the-pi)**; this table says what each subcommand reports and which gate reads it.
+
+| Command | Reports | Feeds |
+|---|---|---|
+| `bench speaker` | CAM++ embed latency p50/p95 for 1 s and 2 s clips, fp32 and int8; household EER on the fixture set | G1 |
+| `bench stt` | zipformer RTF at 1 and 2 threads, final-tail latency, WER (with and without hotwords; the hotword delta is pending a BPE model, [VOICE_PIPELINE §10.2](../../docs/VOICE_PIPELINE.md#102-per-profile-hotword-biasing)) | G2 |
+| `bench tts` | first-chunk latency per voice, RTF | G6 (stage check) |
+| `bench wake` | false accepts per 24 h on the soak corpus, false rejects at 1 m / 3 m, hit latency, CPU | G5 |
+| `bench aec` | wake-hit rate and STT WER during playback vs silence | V3 |
+| `bench endpoint` | truncation and over-run across VAD hangover values on hand-labelled command ends | G6 (chooses the hangover) |
+| `bench llm` | Bedrock TTFT p50/p95 for the first and second (cached) call, warm vs cold cache (gap ≥ 6 min), with and without pre-warm; cache read tokens; cost per turn | G3 |
+| `bench e2e` | full pipeline with HA running and a synthetic HA state storm; waterfall per turn; p50/p90/p95 for fast path (incl. the 1 s command case), no-tool and tool turns | G6 |
+| `bench ram` | peak of (`MemTotal` − `MemAvailable`) at 1 Hz during `e2e`, zram used, OOM kills per container; default profile and with `music` | G4 |
+| `bench thermal` | SoC temperature and throttle bits during a 20-minute `e2e` | G7 |
+| `bench all [--gates] [--json]` | everything above into `tools/bench/results/<date>-<host>.json`; `--gates` exits non-zero on any failed gate; CI diffs against the last accepted run | all |
+
+Flags and M0 scope: `--live` (alias `--llm-live`) lets `bench llm` and `e2e` call real Bedrock (about 20 billed calls); without it the LLM stages are not reported. `--ram-from <results.json>` (repeatable) merges the 24 h RAM profile from an earlier run on the same host and RAM variant, so G4 sees both `default` and `music`. Gates are judged on a 4 GB Pi; an 8 GB run is labelled as such and recorded alongside, never instead. **In M0, `bench e2e` is an in-process emulation**: it chains the real speech stages and the LLM call but has no agent loop, and the fast path is a stub, so its G6 numbers are provisional until the v0.1 loop exists.
 
 ## Run
 

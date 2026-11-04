@@ -1,0 +1,125 @@
+# evals.yaml — utterance → expected tool/args/decision (docs/MODULES.md §12).
+# Offline: policy decision per case and the handler in dry-run against fixtures.ha.states.
+# Every AGENT.md example agrees with these fixtures (rubric R4).
+
+api: 1
+module: weather
+freeze_time: "2026-11-01T09:00:00-08:00"   # Sunday
+
+fixtures:
+  settings: {entity: "01JWEATHERHOME00000000000000", units: metric}
+  profiles:
+    alice: {kind: member, locale: en-US, tz: America/Los_Angeles}
+    # A guest profile whose admin removed weather (only timers left on People › Guest).
+    visitor:
+      kind: guest
+      tz: America/Los_Angeles
+      grants:
+        - {resource: "tool_glob:timer.*", max_risk: act}
+  ha:
+    states:
+      - entity_id: weather.home
+        uuid: "01JWEATHERHOME00000000000000"
+        state: cloudy
+        attributes:
+          friendly_name: Home
+          temperature: 12.5
+          apparent_temperature: 10.2
+          temperature_unit: "°C"
+          humidity: 71
+          wind_speed: 14.4
+          wind_speed_unit: "km/h"
+          attribution: "Weather forecast from met.no"
+          forecast:
+            - {datetime: "2026-11-01T20:00:00+00:00", condition: cloudy, temperature: 14.0, templow: 8.0, precipitation_probability: 10}
+            - {datetime: "2026-11-02T20:00:00+00:00", condition: rainy, temperature: 11.0, templow: 6.0, precipitation_probability: 80}
+            - {datetime: "2026-11-03T20:00:00+00:00", condition: partlycloudy, temperature: 13.0, templow: 5.0, precipitation_probability: 20}
+            - {datetime: "2026-11-04T20:00:00+00:00", condition: sunny, temperature: 16.0, templow: 7.0, precipitation_probability: 0}
+            - {datetime: "2026-11-05T20:00:00+00:00", condition: sunny, temperature: 17.0, templow: 8.0, precipitation_probability: 0}
+            - {datetime: "2026-11-06T20:00:00+00:00", condition: cloudy, temperature: 15.0, templow: 9.0, precipitation_probability: 30}
+            - {datetime: "2026-11-07T20:00:00+00:00", condition: rainy, temperature: 12.0, templow: 8.0, precipitation_probability: 70}
+
+cases:
+  # ---- weather.current
+  - id: current_basic
+    utterance: "what's the weather"
+    profile: alice
+    expect:
+      tool: weather.current
+      args: {}
+      effects: []
+      speak_contains: ["13 degrees and cloudy", "feels like 10"]
+
+  - id: current_indirect_jacket
+    utterance: "do I need a jacket"
+    profile: alice
+    expect:
+      tool: weather.current
+      args: {}
+      speak_contains: ["13 degrees"]
+
+  - id: current_child
+    utterance: "is it cold outside"
+    profile: child                           # child preset has weather.* at read
+    expect:
+      tool: weather.current
+      args: {}
+
+  - id: current_guest
+    utterance: "how hot is it outside"
+    profile: guest                           # guest preset has weather.* at read
+    expect:
+      tool: weather.current
+      args: {}
+
+  # ---- weather.forecast
+  - id: forecast_tomorrow
+    utterance: "what's the weather tomorrow"
+    profile: alice
+    expect:
+      tool: weather.forecast
+      args: {date: "2026-11-02", days: 1}
+      speak_contains: ["Tomorrow: rainy, high 11, low 6, 80 percent chance of rain"]
+
+  - id: forecast_weekend
+    utterance: "will it rain this weekend"
+    profile: alice
+    expect:
+      tool: weather.forecast
+      args: {date: "2026-11-07", days: 2}
+      speak_contains: ["Saturday: rainy"]
+
+  - id: forecast_week
+    utterance: "what's the forecast for the week"
+    profile: alice
+    expect:
+      tool: weather.forecast
+      args: {days: 7}
+      speak_contains: ["Today: cloudy", "4 more days"]
+
+  # ---- policy: denial
+  - id: visitor_denied
+    utterance: "what's the weather"
+    profile: visitor
+    expect:
+      tool: null
+      denied: true                           # both weather tools denied without a grant
+
+  # ---- negative: not this module
+  - id: not_mine_indoor_temperature
+    utterance: "what's the temperature in the bedroom"
+    profile: alice
+    expect:
+      tool: null                             # home.state (indoor sensor)
+
+  - id: not_mine_window
+    utterance: "is the window open"
+    profile: alice
+    expect:
+      tool: null                             # home.state
+
+  - id: not_mine_timer
+    utterance: "set a timer for ten minutes"
+    profile: alice
+    expect:
+      tool: null

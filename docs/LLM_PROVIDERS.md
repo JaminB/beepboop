@@ -238,6 +238,8 @@ exceptions: ThrottlingException→Throttled; ModelTimeout/ServiceUnavailable/Int
             ValidationException→BadRequest; AccessDenied/UnrecognizedClient/ExpiredToken→AuthError
 ```
 
+Operator checks (the runbook in [OPERATIONS §12](OPERATIONS.md#12-troubleshooting-runbook) links here): `AccessDeniedException` means IAM lacks `bedrock:InvokeModelWithResponseStream` or model access was never requested in the console (`System › LLM` links to both); `ValidationException` on the model id means a base id was used instead of an inference-profile id (§3.1); signature errors or `ExpiredToken` mean clock skew (`chronyc tracking`) or an expired key; persistent `ThrottlingException` shows on the health page while the §3.6 ladder engages within one turn.
+
 Thinking blocks (`reasoningContent`) are consumed and dropped; they are never spoken or stored.
 
 ### 3.4 cachePoint placement
@@ -293,18 +295,20 @@ Both the inference-profile ARN **and** the wildcard-region foundation-model ARN 
 
 ### 3.6 Retry, timeouts and the fallback ladder
 
-The loop, not the adapter, owns this (`providers/llm/fallback.py`). The budget is the latency contract ([VOICE_PIPELINE](VOICE_PIPELINE.md)): first audible feedback < 1.0 s, spoken answer < 1.5 s (no tool) / < 2.0 s (tool). A voice user will not wait for exponential backoff, so the ladder fails **fast and sideways**:
+The loop, not the adapter, owns this (`providers/llm/fallback.py`: `Ladder`, `build_ladder` from the household `llm` document, falling back to `providers/llm/defaults.yaml` until System › LLM is saved). The budget is the latency contract ([VOICE_PIPELINE](VOICE_PIPELINE.md)): first audible feedback < 1.0 s, spoken answer < 1.5 s (no tool) / < 2.0 s (tool). A voice user will not wait for exponential backoff, so the ladder fails **fast and sideways**:
 
 ```
 on wake:              provider.warm() for ladder[0]  (§3.7)
 on stt.final:         t0
 try ladder[0]:        connect timeout 1.0 s, first-event timeout 1.2 s
   Throttled / Unavailable / timeout  → immediately try ladder[1] (no sleep, no same-rung retry)
-  BadRequest / AuthError             → stop; health page; voice: "the assistant isn't set up right"
+  BadRequest / AuthError             → stop; health page; voice: "I can control the house; finish setup to let me chat"
   mid-stream Unavailable after text  → keep what was spoken, Done(error); voice adds "…sorry, I lost my connection"
-all rungs failed, or offline (no DNS/route at t0): within 1.0 s of t0 say "I can't reach the assistant right now"
+all rungs failed, or offline (no DNS/route at t0): within 1.0 s of t0 speak the `offline` phrase (VOICE_PIPELINE §11.6)
                       fast path (§12) keeps working regardless
 ```
+
+"Offline at t0" is a DNS lookup of the first rung's endpoint, bounded at 0.5 s (target) and cached for 30 s when it answers and 5 s when it fails; an `Unavailable` from any rung marks the route down for those 5 s, so the next turn speaks `offline` without sending anything. A profile's `llm.alias` (§9) moves that rung to the front; the others keep ladder order.
 
 Default `ladder: [fast, smart, fallback]` (§2.1); admins may append `openai_compat` rungs (a LAN GPU) in v0.2. botocore runs with `retries={"total_max_attempts": 1, "mode": "standard"}`: one send, no retry. (`max_attempts` would be wrong: botocore counts it as *retries*, so `max_attempts: 1` means two sends.) Adaptive retry would hide the latency we must bound. A read timeout on a stale pooled connection is an `Unavailable` like any other; the ladder's next rung runs on a fresh connection because `warm()` (§3.7) has already replaced idle ones. `turns.stages_ms_json` records which rung answered so the Activity page can show "answered by smart after fast throttled".
 
@@ -328,7 +332,7 @@ Invariants fixed now so the v0.1 protocol does not foreclose it ([ROADMAP](ROADM
 
 ## 5. Why not LiteLLM (or any-llm, Pydantic AI)
 
-The reasoning is owned by [ADR 0010](adr/0010-llm-provider-protocol-bedrock-default.md): dependency weight and supply-chain surface on an appliance that controls locks, and the fact that `cachePoint` placement, streaming tool-argument deltas and cancellation are exactly what routers flatten. Two adapters of ~150–250 lines each cover our needs. A community `litellm` adapter may exist as an *extra* implementing `LLMProvider`; it must pass the same conformance suite.
+Owned by [ADR 0010](adr/0010-llm-provider-protocol-bedrock-default.md). A community `litellm` adapter may exist as an *extra* implementing `LLMProvider`; it must pass the same conformance suite.
 
 ---
 
@@ -422,7 +426,7 @@ global.anthropic.claude-haiku-5-5:  {in: 0.10, out: 0.50, cache_read: 0.01, cach
 global.anthropic.claude-sonnet-5-5: {in: 2.00, out: 10.00, cache_read: 0.10, cache_write_5m: 2.50, cache_write_1h: 4.00, verified: 2026-11-01}
 ```
 
-`turns.tokens_*` and `turns.cost_micro_usd` are written per turn ([DATA_AND_PRIVACY](DATA_AND_PRIVACY.md)); the Activity page shows cost per turn and per day, per profile (members see their own, admins everything). Order of magnitude: a cached Haiku turn costs about $0.0003 ($0.0007 with one tool round trip); 50 turns a day ≈ $0.50 a month. Sonnet is roughly 10× that, which is why cache discipline is tested.
+`turns.tokens_*` and `turns.cost_micro_usd` are written per turn ([DATA_AND_PRIVACY](DATA_AND_PRIVACY.md)), summed over every LLM call of the turn (`core/beepboop/agent/usage.py`): `tokens_in` = uncached input + cache-write tokens, `tokens_out` = output, `tokens_cached` = cache-read tokens; cache writes are priced at the rung's `cache_ttl`, and a turn priced from a `verify: true` row is flagged `cost_estimate` in `stages_ms_json`; the Activity page shows cost per turn and per day, per profile (members see their own, admins everything). Order of magnitude: a cached Haiku turn costs about $0.0003 ($0.0007 with one tool round trip); 50 turns a day ≈ $0.50 a month. Sonnet is roughly 10× that, which is why cache discipline is tested.
 
 **Budgets (v0.2)**, invariants only ([ROADMAP](ROADMAP.md)): monthly USD caps per household and optionally per profile, enforced in the loop from the per-turn cost rows, never in a provider; at the cap, LLM turns stop and the fast path keeps working; the device warns once a day at 80 %.
 
@@ -452,9 +456,9 @@ One path: `core/beepboop/agent/fastpath.py` plus the grammar files `core/beepboo
 | Intent | Example utterances | Dispatches | Tier |
 |---|---|---|---|
 | `turn_on` / `turn_off` | "turn off the kitchen lights", "lights on", "switch the fan off" | `home.turn_on/off` | act |
-| `set_brightness` | "kitchen lights to fifty percent", "dim the lamp" (−20 %), "brighter" | `home.set{brightness_pct}` | act |
-| `set_temperature` | "set the thermostat to twenty-one", "make it warmer" (+1 °C) | `home.set{temperature}` | act |
-| `cover` | "open the blinds", "close the bedroom curtains" | `home.set{position}` | act (never garage/gate/door: those resolve as `critical` and fall through) |
+| `set_brightness` | "kitchen lights to fifty percent", "dim the lamp" (−20 %); "brighter" is not in the v0.1 `en` grammar (LLM) | `home.set{attribute: brightness}` | act |
+| `set_temperature` | "set the thermostat to twenty-one", "set the bedroom to twenty degrees"; "make it warmer" is not in the v0.1 `en` grammar (LLM) | `home.set{attribute: temperature}` | act |
+| `cover` | "open the blinds", "close the bedroom curtains" | `home.set{attribute: position}` | act (never garage/gate/door: those resolve as `critical` and fall through) |
 | `media` | "pause", "stop", "next", "volume down", "mute the tv" | `media.control` | act |
 | `timer_set` | "set a timer for ten minutes", "wake me at seven", "remind me in an hour to call mom" (label = trailing clause) | `timer.set` | act |
 | `timer_cancel` / `timer_list` | "cancel the timer", "how long is left" | `timer.cancel`, `timer.list` | act / read |
@@ -490,7 +494,7 @@ stt.final(text, locale) + speaker.final(principal)
 Design points:
 
 - **Same resolver, same policy, same tools.** The fast path has no privileges and no private HA access; it is a different *planner*, not a different *path to effect*. Audit rows look identical except `turns.path = "fast"`.
-- **Grammar files, not code.** `grammar/en.yaml` lists templates per intent with slot types and synonyms; adding a language is a new file plus the locale carried from the audio service. HA Assist's sentence corpus is the coverage reference. A property test asserts no template can match two intents.
+- **Grammar files, not code.** `grammar/en.yaml` lists templates per intent with slot types and synonyms, and the `args` each template emits against the tool's schema in [MCP §4](MCP.md) (slot converters `$target`, `$percent`, `$number`, `$duration_s`, `$at`, `$label`, `$items`; a slot that does not convert or validate hands the turn to the LLM); adding a language is a new file plus the locale carried from the audio service. HA Assist's sentence corpus is the coverage reference. A property test asserts no template can match two intents.
 - **Conservative by construction.** Any doubt (ambiguous resolution, unknown word, tier above `act`) hands the utterance to the LLM unchanged; the fast path never guesses and never asks questions.
 - **Offline.** Resolver, policy and HA are all local, so every intent above works with the internet down.
 - **Evals.** `evals.yaml` entries may declare `expect.path: fast`; `beepboop module check` fails if such an utterance reached the LLM and reports fast-path coverage. Target: ≥ 60 % of a household's device commands.
@@ -504,15 +508,7 @@ It never learns new patterns from the LLM at runtime (that would be a second, im
 
 ## 13. M0 checklist (LLM part)
 
-"Preliminary" below means the 2026-11-02 x86 workstation run on the home connection ([results](../tools/bench/results/2026-11-02-workstation-g3-preliminary.json)); it answers protocol questions, not the Pi gate.
-
-- [x] Bedrock adapter streams text and tool calls through the conformance fixtures.
-- [ ] Warm TTFT p50 within the [G3](ROADMAP.md#m0-prove-the-pi) thresholds from a home connection with a cached prefix, Haiku 5.5, `effort: low`, thinking disabled; record p95 too. (Pi only; the numbers live in G3.)
-- [x] `cacheReadInputTokens > 0` on the second request (preliminary: a 2,388-token prefix). [ ] The minimum prefix size at which it first appears.
-- [ ] Pre-warm on wake measured: cold vs warm TTFT difference (the preliminary run's `warm()` samples are invalid; re-run).
-- [x] Tool-name character set: `[a-zA-Z0-9_-]`, `__` mapping accepted (preliminary). [x] Thinking disabled accepted on Haiku 5.5 (preliminary). [ ] Sonnet 5.5 `between_tools` and the explicit-effort question (§14 Q2).
-- [ ] Fast path: grammar + resolve + authorize p95 < 30 ms on the Pi with a 200-entity household.
-- [ ] Guardrail `sync` streaming latency measured once, so the opt-in toggle can show a number.
+G3 and its status are owned by [ROADMAP M0](ROADMAP.md#m0-prove-the-pi); the preliminary x86 workstation run of 2026-11-02 ([results](../tools/bench/results/2026-11-02-workstation-g3-preliminary.json)) answers protocol questions, not the Pi gate. Done: the Bedrock adapter passes the conformance fixtures; `cacheReadInputTokens > 0` on the second request (a 2,388-token prefix); the `[a-zA-Z0-9_-]` tool-name set with the `__` mapping and thinking disabled on Haiku 5.5 are accepted. Open: warm TTFT p50/p95 on the Pi (G3); the minimum cacheable prefix size; pre-warm on wake, cold vs warm (the preliminary `warm()` samples are invalid); Sonnet 5.5 `between_tools` and explicit effort (§14 Q2); fast path grammar + resolve + authorize p95 < 30 ms on the Pi with 200 entities (target); Guardrail `sync` streaming latency, measured once.
 
 ## 14. Open questions for reviewers
 

@@ -36,11 +36,23 @@ services:
     container_name: beepboop-core
     network_mode: host               # binds 127.0.0.1:8080 only; talks to HA at 127.0.0.1:8123
     environment:
-      BB_DATA: /data
+      BB_DATA_DIR: /data
+      BB_BACKUPS_DIR: /backups
+      BB_HA_DIR: /ha
+      BB_HOST: ${BB_HOST:-beepboop.local}
       BB_AUDIO_SOCKET: /run/beepboop/audio.sock
       BB_HA_URL: ws://127.0.0.1:8123/api/websocket
+      BB_HOST_JSON: /hostrun/host.json                                # health page (OPERATIONS §5, §11)
+      BB_CA_CERT: /caddy/root.crt                                     # /ca helper + cert expiry (WEB_UI §7)
       BB_PUBLIC_URL: https://${BB_HOST:-beepboop.local}
       BB_KEK_PASSPHRASE_FILE: /run/secrets/kek_passphrase            # v0.1 KEK source (DATA_AND_PRIVACY §6.3, D3)
+      # OPERATIONS §9 step 1: the daily read-only update check compares the release
+      # manifest with these running digests; notify only, nothing is pulled.
+      BB_UPDATE_MANIFEST: ${BB_UPDATE_MANIFEST:-https://beepboop.dev/releases/stable.json}
+      BB_CORE_DIGEST: ${BB_CORE_DIGEST}
+      BB_AUDIO_DIGEST: ${BB_AUDIO_DIGEST}
+      BB_HA_DIGEST: ${BB_HA_DIGEST}
+      BB_CADDY_DIGEST: ${BB_CADDY_DIGEST}
     volumes:
       - /etc/beepboop/kek.passphrase:/run/secrets/kek_passphrase:ro   # host-only, outside the data root; written by install.sh
       - /srv/beepboop/config/beepboop.yaml:/config/beepboop.yaml:ro   # household config file
@@ -53,6 +65,8 @@ services:
       - bb-run:/run/beepboop
     devices: ["/dev/vcio:/dev/vcio"]             # only for the optional OTP KEK upgrade; v0.1 uses the passphrase file (DATA_AND_PRIVACY §6.3)
     group_add: ["video"]
+    cap_drop: ["ALL"]                            # root in the container only to own HA's 0600 .storage files (backup/restore)
+    security_opt: ["no-new-privileges:true"]
     mem_limit: ${BB_MEM_CORE:-768m}              # 1g on 8 GB
     cpuset: "0-1"
     healthcheck:
@@ -77,7 +91,6 @@ services:
     volumes:
       - /srv/beepboop/config/beepboop.yaml:/config/beepboop.yaml:ro   # provider selection reaches audio here, never as an event
       - /srv/beepboop/models:/models:ro
-      - /srv/beepboop/audio:/data                # TTS clip cache, calibration; never captured audio
       - bb-run:/run/beepboop
     tmpfs: ["/tmp:size=64m"]                     # ring buffers live here, never on disk
     environment:

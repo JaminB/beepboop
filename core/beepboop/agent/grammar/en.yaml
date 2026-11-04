@@ -1,0 +1,138 @@
+# Fast-path grammar, locale en (LLM_PROVIDERS §12.1 is the intent table; this file is the
+# data). Templates are matched after normalisation (lowercase, fillers stripped, words→numbers).
+# Slots: {target} {area} {number} {percent} {duration} {clock_time} {label}.
+#
+# `args` is the tool call the fast path emits: the same call the LLM would make against the
+# tool's manifest schema (MCP §4). A template may be a plain string or {say, args}; template
+# args are merged over the intent's. Values beginning with `$` are filled from the slots:
+#   $target     {name, area} from {target}/{area}, plus the intent's `domain`
+#   $percent / $number   integer
+#   $duration_s seconds from {duration}
+#   $at         next occurrence of {clock_time}, ISO 8601 with the household offset
+#   $label      the {label} text;  $items  [{label}]
+# A property test asserts no example utterance matches two intents.
+fillers: [please, "can you", "could you", "would you", hey, beepboop, "for me", now]
+intents:
+  turn_on:
+    tool: home.turn_on
+    domain: null
+    args: {target: $target}
+    templates:
+      - "turn on {target}"
+      - "switch on {target}"
+      - "{target} on"
+  turn_off:
+    tool: home.turn_off
+    domain: null
+    args: {target: $target}
+    templates:
+      - "turn off {target}"
+      - "switch off {target}"
+      - "{target} off"
+  set_brightness:
+    tool: home.set
+    domain: light
+    args: {target: $target, attribute: brightness}
+    templates:
+      - {say: "set {target} to {percent} percent", args: {value: $percent}}
+      - {say: "{target} to {percent} percent", args: {value: $percent}}
+      - {say: "dim {target}", args: {delta: -20}}
+  set_temperature:
+    tool: home.set
+    domain: climate
+    args: {target: $target, attribute: temperature}
+    templates:
+      - {say: "set the thermostat to {number}", args: {target: {name: thermostat, domain: climate}, value: $number}}
+      - {say: "set {target} to {number} degrees", args: {value: $number}}
+  cover:
+    tool: home.set
+    domain: cover
+    args: {target: $target, attribute: position}
+    templates:
+      - {say: "open {target}", args: {value: 100}}
+      - {say: "close {target}", args: {value: 0}}
+  state_query:
+    tool: home.state
+    domain: null
+    args: {target: $target}
+    templates:
+      - "is {target} on"
+      - "is {target} off"
+      - "is {target} locked"
+      - {say: "what is the temperature in {area}", args: {attribute: temperature}}
+  media:
+    tool: media.control
+    domain: media_player
+    templates:
+      - {say: "pause", args: {action: pause}}
+      - {say: "stop the music", args: {action: stop}}
+      - {say: "next", args: {action: next}}
+      - {say: "skip", args: {action: next}}
+      - {say: "volume up", args: {action: volume_up}}
+      - {say: "volume down", args: {action: volume_down}}
+      - {say: "mute {target}", args: {action: mute, target: $target}}
+  timer_set:
+    tool: timer.set
+    domain: null
+    templates:
+      - {say: "set a timer for {duration}", args: {kind: timer, duration_s: $duration_s}}
+      - {say: "timer for {duration}", args: {kind: timer, duration_s: $duration_s}}
+      - {say: "wake me at {clock_time}", args: {kind: alarm, at: $at}}
+      - {say: "remind me in {duration} to {label}", args: {kind: reminder, duration_s: $duration_s, label: $label}}
+  timer_cancel:
+    tool: timer.cancel
+    domain: null
+    args: {}
+    templates:
+      - "cancel the timer"
+      - "stop the timer"
+  timer_list:
+    tool: timer.list
+    domain: null
+    args: {}
+    templates:
+      - "how long is left"
+      - "how much time is left"
+  list_add:
+    tool: list.add
+    domain: null
+    args: {items: $items}
+    templates:
+      - {say: "add {label} to the shopping list", args: {list: shopping}}
+      - {say: "add {label} to my list", args: {personal: true}}
+      - {say: "put {label} on the shopping list", args: {list: shopping}}
+  speech_rate:
+    tool: persona.set
+    domain: null
+    templates:
+      - {say: "speak slower", args: {speech_rate: slower}}
+      - {say: "talk slower", args: {speech_rate: slower}}
+      - {say: "speak faster", args: {speech_rate: faster}}
+      - {say: "talk faster", args: {speech_rate: faster}}
+  time_date:
+    tool: null
+    domain: null
+    templates:
+      - "what time is it"
+      - "what is the time"
+      - "what is the date"
+      - "what day is it"
+  not_me:
+    tool: null
+    domain: null
+    templates:
+      - "that was not me"
+      - "that wasn't me"
+  forget_last:
+    tool: null
+    domain: null
+    templates:
+      - "forget that"
+      - "forget the last thing i said"
+  stop:
+    tool: null
+    domain: null
+    templates:
+      - "stop"
+      - "cancel that"
+      - "never mind"

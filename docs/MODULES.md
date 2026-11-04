@@ -24,7 +24,7 @@ Related: [ARCHITECTURE.md](ARCHITECTURE.md) · [MCP.md](MCP.md) · [IDENTITY_AND
 ```
 modules/<id>/
   manifest.yaml     # the contract. Linted in CI. Generates UI, MCP defs, cards, search index.
-  module.py         # entry point: `class Module(beepboop.Module)` with @tool handlers and hooks
+  module.py         # entry point: `class Module(beepboop.module.Module)` with @tool handlers and hooks
   AGENT.md          # MANDATORY model-facing guide. Served on demand via read_guide / MCP resource.
   SETUP.md          # human setup: accounts, app passwords, HA prerequisites
   evals.yaml        # utterance → expected tool + args (+ profile, + expected denial)
@@ -77,6 +77,8 @@ The full schema lives at `core/beepboop/registry/manifest.schema.json` (JSON Sch
 | `api` | integer | — | Manifest/contract version. Must be `1`. |
 | `version` | string | — | Module version, SemVer `MAJOR.MINOR.PATCH`. |
 | `summary` | string | — | ≤ 20 words. Becomes the module card line. Plain prose, no markdown, ends with a period. |
+| `title` | string | optional | Human name for the Integrations page ("Calendar"); the id stays in Details ([WEB_UI §11.2](WEB_UI.md#112-tone-of-voice-shared-with-the-spoken-persona)). Default: the id, capitalised. |
+| `spoken_name` | string | optional | The noun a spoken denial uses for this module ("You don't have access to the *calendar*"), without an article; never a tier word. Default: the title or id in plain words. |
 | `scope` | enum | — | `household` \| `profile`. Who owns the connection and the settings. See §4.3. |
 | `category` | enum | — | `home` \| `media` \| `productivity` \| `information` \| `communication` \| `persona` \| `system`. Used by the UI and module cards. |
 | `locales` | string[] | `["en"]` | BCP-47 tags the module's AGENT.md and tool descriptions support. |
@@ -141,7 +143,7 @@ Errors fail CI. Warnings are shown but pass.
 
 | # | Rule | Level |
 |---|---|---|
-| L1 | Manifest validates against `manifest.schema.json`; `api == 1`; folder name == `id`. | error |
+| L1 | Manifest validates against `manifest.schema.json`; `api == 1`; folder name == `id` (the one exception is `docs/module-template/`, whose worked example is `parcel`). | error |
 | L2 | Every manifest tool has exactly one `@tool` handler in `module.py`, and vice versa. Handler signature matches `args` (names, required-ness, types). | error |
 | L3 | `summary` ≤ 20 words; each tool `description` ≤ 80 words; each arg `description` ≤ 25 words; `output.properties.speak` exists. | error |
 | L4 | Token budgets: one tool definition (name + description + args schema, serialized) ≤ 400 tokens; module card ≤ 60 tokens; AGENT.md ≤ 2,000 tokens; `prompt_block.max_tokens` ≤ 600. Token counts use `beepboop.tokens.estimate()` (cl100k-style approximation, ±10%); the lint allows 10% slack before erroring. | error at budget, warning at 80% |
@@ -203,6 +205,7 @@ settings:
     lookahead_days:
       type: integer
       title: Default lookahead
+      description: "How far ahead a search with no dates looks, e.g. 'when is my next dentist appointment'."
       minimum: 1
       maximum: 30
       default: 7
@@ -272,7 +275,7 @@ tools:
 ### 5.1 `Module` base class and hooks
 
 ```python
-# core/beepboop/module.py  (public API surface for module authors)
+# core/beepboop/module/  (the SDK package; this is the public API surface for module authors)
 from beepboop.module import Module, ToolContext, tool, ToolError, Health, PromptBlock
 
 class Module:
@@ -306,7 +309,7 @@ class Health:
 ### 5.2 Tool handlers
 
 ```python
-class Module(beepboop.Module):
+class Module(beepboop.module.Module):
 
     @tool("caldav.events")
     async def events(self, ctx: ToolContext, start: str | None = None,
@@ -316,7 +319,7 @@ class Module(beepboop.Module):
 ```
 
 - `@tool(name)` binds a handler to a manifest tool. Parameter names, required-ness and basic types must match `args` (lint L2). Args have already been validated against the schema when the handler runs.
-- Return a `dict` matching `output`, or `ToolResult(structured=dict, text=str)` when the text the model sees should differ from the spoken line. By default the model receives `structured` as JSON and the `speak` field is used only when the model is unavailable or for announcements.
+- Return a `dict` matching `output`, or `ToolResult(structured=dict, text=str)` when the text the model sees should differ from the spoken line. By default the model receives `structured` as JSON and the `speak` field is used only when the model is unavailable or for announcements. The eval runner validates every result against `output` and requires a non-empty `speak` string.
 - Raise `ToolError(message, code="...", retryable=False)` for expected failures. `message` is shown to the model (≤ 40 words, actionable: "No calendar connected. Tell the user to connect CalDAV in the beepboop app."). Codes: `not_found`, `ambiguous`, `unavailable`, `reauth`, `rate_limited`, `invalid_args`, `timeout`, `other`. `code="reauth"` also flips the integration status.
 - Any other exception is caught, logged with a trace id, and the model receives `{"error": "tool_failed", "code": "other"}`. Never leak secrets or stack traces into the message.
 - Handlers must respect `ctx.deadline` (§5.3). The core cancels the task at `timeout_ms`.
@@ -384,9 +387,9 @@ class HAClient(Protocol):
                            data: dict | None = None) -> ServiceResult
 ```
 
-Policy and audit are **not** done here: `registry.call()` already authorized the tool. `call_service` is a guard that (1) rejects blocked services ([HOME_ASSISTANT.md §9](HOME_ASSISTANT.md#9-service-allowlist-and-risk-tiers)), (2) raises `PolicyDenied` unless every target is in the principal's granted view at ≥ the call's effective risk, (3) calls HA. There is no `subscribe` and no `snapshot`. Outside a tool call (setup, health, teardown, prompt_block, spawned tasks) `ctx.ha` is read-only (`resolve`, `state`, `states`); `call_service` raises. There is no system principal and no tool dispatch from background code in v0.1; routines (v0.3) will define how automations acquire a principal.
+Policy and audit are **not** done here: `registry.call()` already authorized the tool. `call_service` is a guard that (1) rejects blocked services ([HOME_ASSISTANT.md §9](HOME_ASSISTANT.md#9-service-allowlist-and-risk-tiers)), (2) raises `PolicyDenied` unless every target is in the principal's granted view and `policy.authorize` still allows the actual service on those entities (a `critical` service needs the call's verified approval), (3) calls HA. `resolve` returns granted entities only and raises `ToolError(code="ambiguous")`, whose message is the clarifying question, when a singular name matches several distinct devices. `EntityState.stale` is `True` when HA is unreachable and the state is the last known one. There is no `subscribe` and no `snapshot`. Outside a tool call (setup, health, teardown, prompt_block, spawned tasks) `ctx.ha` is read-only (`resolve`, `state`, `states`); `call_service` raises. There is no system principal and no tool dispatch from background code in v0.1; routines (v0.3) will define how automations acquire a principal.
 
-**`HttpClient`** is a thin wrapper over `httpx.AsyncClient` with `get/post/put/patch/delete/request`, limited to the manifest's `egress` hosts (§2). In dry-run, non-GET requests are recorded as effects and GET requests are served from `evals.yaml` fixtures or fail with `ToolError(code="unavailable")`.
+**`HttpClient`** is a thin wrapper over `httpx.AsyncClient` with `get/post/put/patch/delete/request`, limited to the manifest's `egress` hosts (§2). `request()` also accepts the WebDAV read methods `PROPFIND` and `REPORT` (CalDAV needs them); a `str` or `bytes` `data=` is sent as the raw body. In dry-run, the safe methods (`GET`, `PROPFIND`, `REPORT`) are served from `evals.yaml` fixtures or fail with `ToolError(code="unavailable")`, and every other method is recorded as an effect.
 
 **`KVStore`**:
 
@@ -446,7 +449,7 @@ The v0.1 `weather` module is the worked example; `beepboop module new <id> --ha`
 1. Declare `requires.ha.domains: [weather]`. That makes the module HA-backed and makes health `degraded` until at least one granted `weather.*` entity exists.
 2. Add a household setting `entity` with `x-entity: {domains: [weather]}`. The UI renders an entity picker limited to granted weather entities and stores the entity-registry UUID.
 3. Add `units` (`enum: [metric, imperial]`) with `x-per-profile: true`, so Alice can hear Fahrenheit while the house is metric.
-4. The handler reads `ctx.ha.state(ctx.settings["entity"])` and formats the result with `ctx.locale`; `weather.forecast` reads the `forecast` attribute of the same entity. No `ctx.http`, no secrets, no `egress`: HA already holds the provider credentials.
+4. The handler reads `ctx.ha.state(ctx.settings["entity"])` and formats the result with `ctx.locale`; `weather.forecast` reads the `forecast` attribute of the same entity (HA ≥ 2024.3 serves forecasts only through the `weather.get_forecasts` service response, which `HAClient` does not expose yet; see §17 #4). No `ctx.http`, no secrets, no `egress`: HA already holds the provider credentials.
 5. `untrusted_output: false` on both tools: the output is numbers and enums from HA, nothing free-text.
 6. Evals seed `fixtures.ha.states` with one `weather.home` row; `module check` runs the handlers against it offline.
 7. The entity must be granted to the caller (through the new-device inbox or Access), otherwise `ctx.ha.state` returns `None` and `call_service` raises `PolicyDenied`. Say so in SETUP.md §4: "Grant the weather entity to Everyone in Integrations › Home Assistant › New devices."
@@ -662,9 +665,10 @@ api: 1
 module: caldav
 freeze_time: "2026-11-01T09:00:00-08:00"   # ctx.now() for every case; default: this value
 fixtures:
-  settings: {url: "https://cal.test/dav", calendar: "Personal", lookahead_days: 7}
+  settings: {url: "https://cal.test/dav/", calendar: "Personal", lookahead_days: 7}
   secrets:  {username: "alice", app_password: "fixture"}   # fakes; never real
-  profiles:                                                 # optional overrides of the default presets
+  profiles:                                                 # optional overrides of the default presets;
+                                                            # `grants: [{resource, max_risk}]` replaces the preset's rows
     alice: {kind: member, locale: en-US, tz: America/Los_Angeles}
   kv:                                                       # {household: {...}, <profile>: {...}}
     household: {}
@@ -672,9 +676,11 @@ fixtures:
   ha:                                                       # HA-backed modules: the dry-run state table
     states:
       - {entity_id: weather.home, uuid: "01J9…", state: cloudy, attributes: {temperature: 12.5, humidity: 71}}
-  http:                                                     # dry-run GET fixtures, matched in order
-    - match: {method: GET, url: "https://cal.test/dav/*"}
-      response: {status: 200, text_file: tests/fixtures/calendar.ics}
+  http:                                                     # dry-run fixtures for safe methods, matched in order
+    - match: {method: PROPFIND, url: "https://cal.test/dav/*"}       # CalDAV discovery (method defaults to GET)
+      response: {status: 207, text_file: tests/fixtures/calendars.xml}
+    - match: {method: REPORT, url: "https://cal.test/dav/calendars/alice/personal/"}
+      response: {status: 207, text_file: tests/fixtures/report.xml}
 cases:
   - id: agenda_tomorrow
     utterance: "what's on my calendar tomorrow"
@@ -683,7 +689,7 @@ cases:
       tool: caldav.events
       args: {start: "2026-11-02T00:00:00-08:00", end: "2026-11-02T23:59:59-08:00"}   # subset match
       effects: []                                           # no side effects on a read
-      speak_contains: ["Dentist"]                           # from the fixture .ics
+      speak_contains: ["Dentist"]                           # from the fixture report
 
   - id: add_event
     utterance: "put dentist on my calendar Friday at 3"
@@ -692,7 +698,7 @@ cases:
       tool: caldav.create
       args: {title: "Dentist", start: "2026-11-06T15:00:00-08:00"}
       effects:
-        - {kind: http, method: PUT, url_glob: "https://cal.test/dav/*"}
+        - {kind: http, method: PUT, url: {$regex: "^https://cal[.]test/dav/.*[.]ics$"}}
 
   - id: ambiguous_time
     utterance: "add lunch with Sam to my calendar"
@@ -714,7 +720,7 @@ cases:
       tool: null              # negative case: none of this module's tools
 ```
 
-Fields: `expect.tool` (string or `null`), `expect.args` (subset match, exact values; use `{$regex: "..."}` or `{$any: true}` for a value), `expect.effects` (list of recorded side effects, subset match), `expect.speak_contains`, `expect.denied`, `expect.ask_user`, `expect.confirm` (`true` when a critical tool must trigger the second factor), `expect.taint` (`true` when the call must leave the turn tainted, i.e. the tool is `untrusted_output`). Default profiles `admin`, `member`, `child`, `guest` exist with the preset grants from [IDENTITY_AND_TRUST.md](IDENTITY_AND_TRUST.md) and all of this module's tools granted at their declared risk where the preset allows. `fixtures.kv` is keyed `household` plus one key per profile; `fixtures.ha.states` rows are `{entity_id, uuid, state, attributes}` and are all treated as granted to every default profile.
+Fields: `expect.tool` (string or `null`), `expect.args` (subset match, exact values; use `{$regex: "..."}` or `{$any: true}` for a value), `expect.effects` (list of recorded side effects, subset match), `expect.speak_contains`, `expect.denied`, `expect.ask_user`, `expect.confirm` (`true` when a critical tool must trigger the second factor), `expect.taint` (`true` when the call must leave the turn tainted, i.e. the tool is `untrusted_output`). A case may set `voice: {confidence, margin}` (default `0.95` / `0.30`, a confidently identified speaker) to exercise the identity step of [IDENTITY_AND_TRUST §7.2](IDENTITY_AND_TRUST.md): below `τ_act` an `act` tool is denied, between `τ_act` and `τ_personal` a `personal` tool needs the second factor (`expect.confirm`). Default profiles `admin`, `member`, `child`, `guest` exist with the preset grants from [IDENTITY_AND_TRUST.md](IDENTITY_AND_TRUST.md) and each of this module's tools raised to its declared risk where the preset allows, meaning the profile's preset grants already name the tool with a `tool_glob` (so the Guest preset is denied `list.add` in evals exactly as in production); the ceiling still applies. A `fixtures.profiles.<name>` entry may set `grants` (the preset YAML shape) to replace its preset's rows, for cases such as a child whose parents removed `timer.*`. `fixtures.kv` is keyed `household` plus one key per profile; `fixtures.ha.states` rows are `{entity_id, uuid, state, attributes}` and are all treated as granted to every default profile.
 
 ### 12.2 Two modes
 
@@ -733,11 +739,12 @@ The LLM mode exists because AGENT.md and descriptions are *prompts*: the only pr
 When `ctx.dry_run` is true:
 
 - `ctx.ha.call_service` records `{kind: ha, domain, service, targets, data}` and returns a synthetic `ServiceResult(ok=True)`; `ctx.ha.state/states/resolve` read `fixtures.ha.states` or an empty index.
-- `ctx.http` GETs are served from `fixtures.http`; any other method is recorded as `{kind: http, method, url}` and returns `200 {}`.
+- `ctx.http` `GET`, `PROPFIND` and `REPORT` requests are served from `fixtures.http`; any other method is recorded as `{kind: http, method, url}` and returns `200 {}`. `setting:<name>` egress entries resolve against the context's settings exactly as in production.
 - `ctx.announce` records `{kind: announce, text, profile_id, priority}`.
 - `ctx.kv` is an in-memory store seeded from `fixtures.kv`.
 - `ctx.secrets` is seeded from `fixtures.secrets`.
 - `ctx.now()` returns `freeze_time`.
+- A handler that raises anything other than `ToolError` fails the case with `handler raised <Type> at module.py:<line>`; a result that does not match `output` or lacks a non-empty `speak` fails it too (§5.2).
 
 The same switch powers the Web UI's "Dry run" toggle in Activity › Try a request ([WEB_UI.md](WEB_UI.md)) so a module author can drive a tool from the browser without touching real devices.
 
@@ -777,24 +784,33 @@ def test_norm_strips_spaces_and_uppercases():
 
 ```
 beepboop module new <id> [--ha] [--scope household|profile] [--category ...]
-    Copies docs/module-template/ to modules/<id>/, substitutes the id, sets scope/category, leaves TODO markers.
-    --ha writes a `requires.ha` block and an `x-entity` setting instead of the native http client (§5.7).
-    Runs `module check` once so you start green.
+    Copies docs/module-template/ to modules/<id>/, substitutes the id, sets scope/category (both validated
+    before anything is written), leaves TODO markers (`grep -n TODO modules/<id>`) and prints the next steps.
+    --ha adds a `requires.ha` block with a TODO; the scaffold keeps the worked example's native http client
+    because the template is one module, not two: for the HA-backed shape (an `x-entity` setting and
+    `ctx.ha` reads, no egress) copy `modules/weather` (§5.7).
+    Runs lint and the offline evals once so you start green.
 
 beepboop module check [<id>|<path>|--all] [--llm] [--provider <id>] [--rubric] [--show-card] [--json]
     Lint (L1–L18), token budgets, examples, evals (offline by default; --llm runs the real agent loop).
     --show-card prints the rendered module card and the per-profile token meter. Exit 1 on any error.
     This is the one eval command; CI nightly calls `module check --llm --all`.
 
-beepboop module list [--profile <id>]
-    Modules, backed by (HA / native), scope, version, health, tool count, and (with --profile) which tools that person can call.
+beepboop module list [--profile <id>] [--data-dir <path>]
+    Modules, backed by (HA / native), scope, version, tool count, load state, and (with --profile, which
+    opens the database) which of each module's tools that person can call.
 
 beepboop module enable|disable <id>
     Toggle at runtime (same as the Web UI). Disabled modules are not imported.
 
-beepboop chat --as <profile> [--dry-run] [--trace]
-    Text turn through the real agent loop and policy path. --trace prints the tools offered,
-    find_tools hits, policy decisions, latency waterfall. The fastest way to iterate on AGENT.md.
+beepboop chat --as <profile> [--dry-run] [--trace] [--seed] [--fake-llm] [-m "<line>" ...]
+    Text turn through the real agent loop and policy path. --trace prints the "why did you do that"
+    explanation of each turn (and keeps the log lines; without it only warnings show). --seed creates the
+    dev household (Alex the admin, Sam the member, Robin the child; no logins) when those names are absent,
+    so `--as alex` works on a fresh checkout. --fake-llm answers from the modules' evals.yaml expectations
+    instead of a model, so deferred tools are reachable offline (never a measurement of anything). Without
+    -m it reads lines from the terminal with a `you>` prompt. Outside the container the database lives in
+    ./.data unless BB_DATA_DIR or --data-dir says otherwise. The fastest way to iterate on AGENT.md.
 ```
 
 `beepboop` is the core package's console script (`core/beepboop/cli.py`).
@@ -825,12 +841,12 @@ beepboop chat --as <profile> [--dry-run] [--trace]
 | Module | Backed by / scope | Tools (risk) | Always loaded | Notes |
 |---|---|---|---|---|
 | `ha` | HA / household | `home.turn_on` (act), `home.turn_off` (act), `home.set` (act), `home.state` (read), `media.control` (act) | yes | Owns the HA WebSocket, state cache, entity resolver, UUID grants, new-device inbox. Indirect services (`script`, `scene`, `automation`, `input_*`, `button`, `select`, template switches) default `critical` until dispositioned; `homeassistant.*`, `rest_command.*`, `shell_command.*`, `python_script.*`, `hassio.*`, `notify.*` are never callable ([HOME_ASSISTANT.md §9](HOME_ASSISTANT.md#9-service-allowlist-and-risk-tiers)). Locks, alarm panels, garage covers are `critical` by domain regardless of tool. |
-| `timers` | native / household | `timer.set` (act), `timer.list` (read), `timer.cancel` (act) | yes | `kind: timer\|alarm\|reminder` arg. State lives in profile-scoped `ctx.kv` (no core tables). Rings via `ctx.spawn` + `ctx.announce` on the originating device. On startup `setup()` re-schedules due timers from kv and recomputes due times if the wall clock has stepped by > 60 s ([OPERATIONS.md](OPERATIONS.md)). Covers alarms and reminders; no separate module. |
+| `timers` | native / household | `timer.set` (act), `timer.list` (read), `timer.cancel` (act) | yes | `kind: timer\|alarm\|reminder` arg. State lives in profile-scoped `ctx.kv` (no core tables). Rings via `ctx.spawn` + `ctx.announce` on the device the profile last used. A label-free household-kv ring index (id, profile, due time) lets `setup()` re-schedule after a restart, since hook contexts only see household kv; while running, duration-based due times are shifted when the wall clock steps by > 60 s against the monotonic clock, and clock-time alarms keep their clock time. Entries more than 5 min late (device was down) are skipped, not rung. Covers alarms and reminders; no separate module. |
 | `lists` | native / household | `list.add` (act), `list.read` (read), `list.remove` (act) | add, read | Shared lists (shopping) at household kv scope; personal lists (`"my to-do"`) at profile scope. Stored as JSON per list in `ctx.kv` (no core tables). Works offline (fast-path eligible). |
 | `weather` | HA / household | `weather.current` (read), `weather.forecast` (read) | no | Uses a granted HA `weather.*` entity (`x-entity` setting); `units` is `x-per-profile`. No API key: Met.no via HA is the default. The worked HA-backed example (§5.7). |
 | `caldav` | native / profile | `caldav.events` (personal, untrusted), `caldav.create` (personal) | no | App passwords, no OAuth. Nextcloud, Fastmail, iCloud, Radicale. Reminders from events arrive with routines (v0.3). |
-| `music` | HA / household | `music.play` (act), `music.now_playing` (read) | no | Music Assistant via HA (`requires.ha.integrations: [music_assistant]`); `default_player` is `x-per-profile`. Pause/skip/volume go through `media.control`. Per-user streaming accounts arrive with `spotify` in v0.2. |
-| `persona` | native / household | `persona.set` (act) | no | `prompt_block` (≤ 600 tokens): name, style, verbosity, voice contract. Settings `voice`, `speech_rate`, `verbosity` are `x-per-profile`; `persona.set` writes the caller's own overrides ("talk slower", "be briefer"), hence `act`. |
+| `music` | HA / household | `music.play` (act), `music.now_playing` (read, untrusted) | no | Music Assistant via HA (`requires.ha.integrations: [music_assistant]`); `default_player` is `x-per-profile`. Pause/skip/volume go through `media.control`. `music.now_playing` is `untrusted_output` because titles come from streaming services (§4.5). Per-user streaming accounts arrive with `spotify` in v0.2. |
+| `persona` | native / household | `persona.set` (act) | no | `prompt_block` (declared 300 tokens, ≤ 600): name, style, verbosity. Settings `voice`, `speech_rate`, `verbosity` are `x-per-profile`; `persona.set` writes the caller's own overrides ("talk slower", "be briefer"), hence `act`. |
 
 Always-loaded total: 10 module tools + `find_tools` + `read_guide` = 12.
 
@@ -854,3 +870,5 @@ Tracked here so reviewers can see them; resolutions go into ADRs.
 1. [v0.1 ruling] `lists` is native (kv) for v0.1. HA `todo` entities would honor HA-first but need an integration and per-list ownership mapping. Revisit if users want their HA shopping list synced.
 2. [v0.2] `caldav` and `google_calendar` expose parallel `*.events`/`*.create` tools rather than one shared `calendar.*` intent namespace. A profile normally has one; `find_tools` resolves the rest. A shared namespace with a provider fan-out can come later without breaking either.
 3. [M0 measurement] Whether the `read_guide` round trip (§10.2) is cheap enough that deferred modules can stay deferred by default, or whether descriptions need to carry more, is decided by `bench e2e` numbers.
+4. [v0.1, ha + modules] `weather.forecast` needs HA's `weather.get_forecasts` service response; `HAClient.call_service` returns only `ServiceResult(ok, detail)`. Until a response-returning read (e.g. `HAClient.forecast(entity, kind)`) is added under api:1, the module reads the legacy `forecast` attribute and answers `unavailable` without it.
+5. [v0.1, core] `persona.set` overrides live in the persona module's profile kv, while TTS reads `profiles.speech_rate` / `tts_voice` / `verbosity` ([DATA_AND_PRIVACY.md §6.1](DATA_AND_PRIVACY.md#61-v01-tables-0001_initsql)). Pick one home: either core syncs the persona module's effective values into those columns after `persona.set`, or the columns are dropped in favour of the module. Core must also re-render the persona `prompt_block` after a successful `persona.set`, not only on settings change (§5.6).

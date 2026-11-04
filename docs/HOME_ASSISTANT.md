@@ -71,7 +71,7 @@ logger:
 
 **Discovery replies are blocked by default.** Host networking lets HA *send* discovery traffic, but the default-deny input chain drops the unicast replies to SSDP/UPnP searches and inbound HomeKit (HAP) connections, so integrations that rely on them (some UPnP/DLNA devices, HomeKit Controller pairing, HomeKit Bridge) will not find or reach devices. mDNS (`5353/udp`) is allowed. A household that needs one of these declares the port under `user:` in `deploy/ports.yaml` with a reason ([OPERATIONS §2 step 8](OPERATIONS.md#2-os-preparation)). This is an M0 watch item: V1 records which integrations in the test household break.
 
-**How it is checked.** `beepboop doctor` checks each layer on the Pi itself: the bind (`ss -ltn` shows `127.0.0.1:8123` and no wildcard or LAN address on :8123) and the ruleset (`nft list table inet beepboop` is loaded and contains the `8123` drop before the allowlist). It deliberately does **not** connect to `<lan-ip>:8123` from the Pi: a connection from the host to its own LAN address goes through `lo`, which is accepted, so a self-connect can never observe the drop. End-to-end verification needs a second machine on the LAN; that is V1 ([tools/probes/ha_bind/](../tools/probes/ha_bind/README.md)).
+**How it is checked.** `beepboop doctor` checks each layer on the Pi itself: the bind (the host's listening sockets, read from `/proc/net`, show :8123 on loopback only; `ports.yaml` lists it under `loopback_only`) and the ruleset (`nft list table inet beepboop` is loaded and contains the `8123` drop before the allowlist). It deliberately does **not** connect to `<lan-ip>:8123` from the Pi: a connection from the host to its own LAN address goes through `lo`, which is accepted, so a self-connect can never observe the drop. End-to-end verification needs a second machine on the LAN; that is V1 ([tools/probes/ha_bind/](../tools/probes/ha_bind/README.md)).
 
 ### 2.2 Resource tuning for a Pi 4
 
@@ -122,15 +122,17 @@ Rules:
 
 ## 4. The WebSocket client
 
-One client, one connection, in `core/beepboop/ha/client.py`; the state cache (§5) and the registry index (§6) live beside it in `core/beepboop/ha/`. Nothing else in the repo opens a socket to HA. Modules get `ctx.ha`, the **policy-wrapped** handle (§8), never this class.
+One client, one connection, in `core/beepboop/ha/client.py`; the cache, index, inbox mirror, target extractor, wrapper and the `HAService` that owns them live beside it ([core/beepboop/ha/README.md](../core/beepboop/ha/README.md)). Nothing else in the repo opens a socket to HA. Modules get `ctx.ha`, the **policy-wrapped** handle (§8), never this class.
 
 ```python
 class HAConnection:
     """Single persistent connection. Reconnects with backoff; resyncs fully after reconnect."""
-    async def connect(self) -> None            # auth, supported_features, initial sync, subscriptions
-    async def call(self, type: str, **payload) -> Any      # request/response by id, 5 s default timeout
-    async def call_service(self, domain, service, data, target, *, return_response=False, timeout=5.0) -> ServiceResult
-    def on(self, event_type: str, handler)     # state_changed, *_registry_updated, config_entry_*
+    async def connect(self) -> None            # auth, supported_features, then the on_connect hooks (steps 3-9)
+    async def run(self) -> None                # connect + keepalive + reconnect loop; returns on auth_invalid
+    async def call(self, command: str, *, timeout=None, **payload) -> Any   # request/response by id, 5 s default
+    async def call_service(self, domain, service, data, target, *, return_response=False, timeout=5.0) -> CallResult
+    def on(self, event_type: str, handler)     # state_changed, *_registry_updated, service_*
+    def on_connect(self, hook)                 # runs after every auth_ok: a reconnect is a full resync
     @property
     def connected(self) -> bool
 ```
@@ -142,9 +144,9 @@ Startup sequence and the messages involved:
 | 1 | `{"type":"auth","access_token":…}` → `auth_ok` | Token from `secrets` |
 | 2 | `supported_features {"features":{"coalesce_messages":1}}` | HA batches event bursts into one frame |
 | 3 | `get_config` | Version (for the contract-test matrix), unit system, location |
-| 4 | `config/entity_registry/list`, `config/device_registry/list`, `config/area_registry/list`, `config/floor_registry/list` | Build the registry index (§6) and refresh `ha_entities` |
+| 4 | `config/entity_registry/list`, `config/device_registry/list`, `config/area_registry/list`, `config/floor_registry/list`, then `config/entity_registry/get_entries` for the listed entities | Build the registry index (§6) and refresh `ha_entities`; `get_entries` adds `aliases` and `device_class`, which the list omits |
 | 5 | `config_entries/get` | Which config entries exist, their domain, title and state (`loaded`, `setup_error`, `setup_retry`, needs `reauth`) |
-| 6 | `get_states` | Seed the state cache (§5) |
+| 6 | `get_states` | Seed the state cache (§5); runs before step 4 so names can fall back to `friendly_name` |
 | 7 | `subscribe_events` for `state_changed`, `entity_registry_updated`, `device_registry_updated`, `area_registry_updated` | Incremental updates |
 | 8 | `config_entries/subscribe` | Entry added / removed / state changed (reauth notices, new-device inbox) |
 | 9 | `get_services` once, then on `service_registered`/`service_removed` | Validate service names and build the allowlist view (§9) |
@@ -167,12 +169,12 @@ In-memory dict `entity_id → State{state, attributes, last_changed, last_update
 Snapshot format for `home://context` and for the LLM when it asks (`home.state` with no args), grouped by area, only entities the principal is granted, capped at ~600 tokens:
 
 ```
-Living room: Ceiling light on 60%; Floor lamp off; TV playing (Jellyfin); Temperature 21.5°C
+Living room: Ceiling light on 60%; Floor lamp off; TV playing; Temperature 21.5 °C
 Kitchen: Lights off; Dishwasher running (0:42 left)
 Front door: locked
 ```
 
-Attributes are whitelisted per domain (`brightness`, `color_temp_kelvin`, `temperature`, `current_temperature`, `hvac_mode`, `media_title`, `volume_level`, `battery_level`, `position`). Everything else stays in the cache but is not rendered.
+Attributes are whitelisted (`brightness`, `color_temp_kelvin`, `temperature`, `current_temperature`, `humidity`, `hvac_mode`, `volume_level`, `is_volume_muted`, `battery_level`, `current_position`, `percentage`, `unit_of_measurement`, `device_class`; the list is `STATE_ATTRIBUTES` in `modules/ha/module.py`) and only typed values pass (numbers, booleans, enum-like tokens; a unit is at most eight non-space characters). The `attribute` argument of `home.state` is an enum of spoken names that map onto that list (`STATE_ATTRIBUTE_KEYS`); it can never name another key. The `state` value itself is spoken only when it is a number or an enum-like token (`on`, `heat_cool`, an ISO timestamp); a free-text state (a template sensor) is replaced by `unreadable`. Everything else, including free text (`media_title`, `source`), stays in the cache unrendered, so `home.state` is `untrusted_output: false`.
 
 ---
 
@@ -188,7 +190,7 @@ class EntityRef:
     uuid: str            # entity registry `id`; the key for grants and audit
     entity_id: str       # current, may change
     domain: str
-    name: str            # friendly name (registry name > original_name > state attribute)
+    name: str            # registry name (set by a person) > state friendly_name > original_name > device name > object id
     aliases: tuple[str, ...]   # registry aliases (what Assist uses too)
     area_id: str | None  # entity area, else device area
     floor_id: str | None
@@ -198,7 +200,7 @@ class EntityRef:
     hidden: bool; disabled: bool
 ```
 
-Plus `areas: {area_id → Area{name, aliases, floor_id}}`, `devices`, `floors`. Entities with `disabled` or `hidden`, or with `ha_entities.status != 'active'`, are indexed but never resolvable.
+Plus `areas: {area_id → Area{name, aliases, floor_id}}`, `devices`, `floors`. Entities with `disabled` or `hidden`, or with `ha_entities.status != 'active'`, are indexed but never resolvable. Each build is mirrored into `ha_entities` in one durable write: a new UUID lands `new` (indirect class, §9: `declared_risk = critical`; a config entry already granted, §7.2: `active`), refreshes never touch `status` or `declared_risk`, a vanished UUID gets `removed_at`, and the policy snapshot is rebuilt.
 
 ### 6.2 Per-profile view
 
@@ -231,11 +233,11 @@ class Resolution:
     confidence: float
 ```
 
-Algorithm (pure, deterministic, property-tested with `hypothesis` plus a fixture household in `core/beepboop/ha/tests/fixtures/household.json`):
+`TargetQuery` also has `all: bool` (MCP §4 `target.all`). Algorithm (pure, deterministic, property-tested with `hypothesis` over `core/beepboop/testing/fixtures/ha_household.json`):
 
 1. **Scope.** Start from `ProfileIndex`. Apply `domain`, `device_class`, `state_filter`.
 2. **Area.** If `area` is given, fuzzy-match it against area and floor names and aliases (threshold 85/100). If `name` itself contains an area word ("kitchen lights"), split it: area = kitchen, name = lights. A satellite's own area (v0.3) is the default area when none is spoken.
-3. **Name.** Normalise (lower, strip articles, singularise common nouns, "lights"→"light"). Score each candidate with `max(token_set_ratio(name, entity.name), max over aliases)` using rapidfuzz. Also accept **domain nouns**: "lights" with no further name matches every `light.*` in the area; "the tv" matches `media_player` with device_class tv.
+3. **Name.** Normalise (lower, strip articles and quantifiers such as "all", singularise common nouns, "lights"→"light"). Score each candidate with `max(token_set_ratio(name, entity.name), max over aliases and the entity_id object id)` using rapidfuzz (`token_sort_ratio` when the spoken name has more words than the candidate, so "garage door" does not tie with an alias "door"). Also accept **domain nouns**: "lights" with no further name matches every `light.*` in the area; "the tv" matches `media_player` with device_class tv.
 4. **Decide.** Collect candidates with score ≥ 80. If the best is ≥ 90 and either unique or all ties share the same area and domain → `ok`. If several distinct devices score within 10 points of each other and the query is singular → `ambiguous`. Nothing ≥ 80 → `none`.
 5. **Deny check.** Run the same match against the full index minus the profile view. If that would have matched and the profile view did not → `denied` (so the voice can say `not_granted` instead of "I don't know that device", except for Guests, who get `none`).
 
@@ -262,7 +264,7 @@ Lights, climate, locks, media players in common rooms: the admin grants `ha_area
 
 ### 7.2 Personal accounts via HA config entries
 
-When a profile connects a personal HA integration (v0.2 generic flow renderer; in v0.1 only Music Assistant providers are mapped, through the music module's `ma_provider` setting, §12):
+When a profile connects a personal HA integration (v0.2 generic flow renderer; v0.1 maps none, see §12 for why Music Assistant accounts stay household-wide):
 
 1. beepboop starts the config flow **on behalf of that profile** and records `integrations(module_id="ha", scope="profile", profile_id, ha_config_entry_id)`.
 2. On `config_entries/subscribe` → `added`, it creates one grant: `(profile, ha_config_entry, <entry_id>, max_risk=personal, source=auto:config_entry)`.
@@ -276,13 +278,15 @@ Provider-specific rules (Spotify's developer-portal and account limits, for exam
 
 ## 8. The policy-wrapped client (`ctx.ha`)
 
-Modules never touch `HAConnection`. They receive `ctx.ha`, the module-facing `HAClient` Protocol defined in [MODULES §5.3](MODULES.md#53-toolcontext) (`resolve`, `state`, `states`, `call_service`), implemented by `core/beepboop/policy/ha_wrapper.py`, the **only holder of the HA token**. The `ha` module itself contains only the `home.*` and `media.*` tool handlers and goes through the same wrapper.
+Modules never touch `HAConnection`. They receive `ctx.ha`, the module-facing `HAClient` Protocol defined in [MODULES §5.3](MODULES.md#53-toolcontext) (`resolve`, `state`, `states`, `call_service`), implemented by `PolicyHAClient` in `core/beepboop/ha/wrapper.py`, bound per call to the principal, tool and verified approval (hooks: no principal, read-only). The token never leaves `core/beepboop/ha/`. The `ha` module itself contains only the `home.*` and `media.*` tool handlers and goes through the same wrapper.
 
 `call()` does, in order and deterministically:
 
-1. **Service allowlist lookup** (§9) → tier, or `PolicyDenied("service_blocked")` for the blocked class.
-2. **Every target must be in the principal's granted view at ≥ that tier**, else `PolicyDenied`.
-3. **`call_service`.**
+1. **Service allowlist lookup** (§9) → tier, or `PolicyDenied("service_blocked")` for the blocked class; outside a tool call, `PolicyDenied`.
+2. **Every target must be in the principal's granted view**, else `PolicyDenied("no_grant")`; entity ids come from the index by UUID.
+3. **`policy.authorize` again on the actual service**: `confirm` passes only with the approval dispatch already consumed, so `lock.lock` cannot become `lock.unlock`, **and** only for the entity UUIDs that dispatch authorized (the registry narrows the client to them), each at most once per approval: a handler that resolves differently from the extractor, a stale default player or a loop cannot spend one approval on another device.
+4. **`data` carries no targeting keys**: `entity_id`, `area_id`, `device_id`, `floor_id` and `label_id` in service data are `ToolError("invalid_args")`, because HA merges `target` into the service data and an area in `data` would act on every entity in it.
+5. **`call_service`**; `ToolError("unavailable")` while disconnected.
 
 Authorization and audit are not the wrapper's job: `registry.call()` owns `policy.authorize()` and the `tool_calls` row ([MCP §1](MCP.md#1-one-registry-two-front-doors)); the wrapper is the second guard against a module building its own target list. The raw client is private to `core/beepboop/ha/`; `beepboop module check` fails any module that imports `beepboop.ha`.
 
@@ -302,7 +306,7 @@ The single source is `core/beepboop/policy/ha_services.yaml`; this section rende
 | `light.turn_on` with `brightness_pct`, `color_temp_kelvin`, `rgb_color` | `act` | via `home.set` |
 | `climate.set_temperature`, `set_hvac_mode`, `set_preset_mode` | `act` | step clamped to ±5 °C per call |
 | `cover.open_cover` / `close_cover` / `set_cover_position` | `act`, **`critical` if `device_class` in {garage, gate, door}** | device_class comes from the registry, not the model |
-| `media_player.*` (play, pause, stop, next, previous, volume_set, volume_mute, select_source, play_media) | `act` | `media.control`; `volume_set` clamped ≤ 0.7 for Child |
+| `media_player.*` (play, pause, stop, next, previous, volume_set, volume_mute, select_source, play_media) | `act` | `media.control`; `volume_set` clamped ≤ 0.7 for Child, and a Child's `volume_up` becomes a `volume_set` of current + 0.1 under the same cap |
 | `music_assistant.play_media`, `search`, `get_queue` | `act` / `read` | music module |
 | `lock.lock` | `act` | locking is safe |
 | `lock.unlock`, `lock.open` | `critical` | always second factor |
@@ -333,6 +337,17 @@ The grant is on the script/scene/helper *entity* UUID; the tier the admin chose 
 | `persistent_notification.*`, `system_log.*`, `logger.*`, `recorder.*` | admin tooling |
 
 Lists are native (`list.*` on `ctx.kv`), so there is no `todo.*` row.
+
+**Reads** (`home.state`, `service = None`) are tier `read` for every non-blocked domain; floors and `declared_risk` apply to services only.
+
+**What each tool calls** (`modules/ha` and core's target extractor `core/beepboop/ha/plan.py` share this table; a test keeps them identical):
+
+| Tool | Domain → service |
+|---|---|
+| `home.turn_on` | `light`, `switch`, `fan`, `humidifier`, `media_player`, `climate`, `siren`, `scene`, `script`, `automation`, `input_boolean` → `turn_on`; `cover` → `open_cover`; `lock` → `lock`; `vacuum` → `start`; `alarm_control_panel` → `alarm_arm_away`; `button`, `input_button` → `press` |
+| `home.turn_off` | the same `turn_off` domains (no `scene`); `cover` → `close_cover`; `lock` → `unlock` (`critical`); `vacuum` → `return_to_base`; `alarm_control_panel` → `alarm_disarm` (`critical`) |
+| `home.set` | `brightness`, `color`, `color_temp` → `light.turn_on`; `temperature`, `hvac_mode`, `preset` → `climate.set_*`; `fan_speed` → `fan.set_percentage`; `position` → `cover.set_cover_position`; `volume` → `media_player.volume_set` |
+| `media.control` | `media_player.media_play / media_pause / media_stop / media_next_track / media_previous_track / volume_mute / volume_up / volume_down / volume_set` |
 
 **Risk chip rule.** Risk can be raised; it can be lowered only for indirect services, after the admin reads what the entity does (the inbox shows the script or scene body). A direct service's tier is never editable.
 
@@ -382,7 +397,7 @@ In v0.1 only the Music Assistant flow runs through this (no OAuth). The generic 
 
 Music Assistant (MA) runs as the optional compose profile `music` (service `music`, defined in [OPERATIONS §3](OPERATIONS.md#3-compose-layout); host networking for player discovery: AirPlay, Chromecast, Sonos, Snapcast) and is integrated into HA with the core `music_assistant` integration. beepboop's `music` module is `kind: ha`: it has no transport of its own and uses `ctx.ha`.
 
-Setup, driven by **Integrations › Music › Set up** in the web UI: (1) the installer enables the `music` profile; (2) core runs `config_entries/flow {handler:"music_assistant", url:"http://127.0.0.1:8095"}` over the WebSocket; (3) MA players appear as `media_player.*` entities tagged with that config entry; the admin grants them by area like any device (they are shared playback hardware). Streaming provider accounts (Spotify, Tidal, local library) are configured inside MA's UI, reached through the same gated admin route as HA (§14, port 8445 → 8095). The music module's `ma_provider` setting is `x-per-profile` ([MODULES §6.3](MODULES.md#63-per-profile-overrides)): each person picks which MA provider instance is theirs, so "play my liked songs" uses Alex's account when Alex is speaking. It is a setting, not an `integrations` row. Services used: `music_assistant.play_media` (`media_id`, `media_type`, `enqueue`), `music_assistant.search` (`return_response`), `media_player.*` for transport. Details, prompts and quirks are in `modules/music/AGENT.md`.
+Setup, driven by **Integrations › Music › Set up** in the web UI: (1) the installer enables the `music` profile; (2) core runs `config_entries/flow {handler:"music_assistant", url:"http://127.0.0.1:8095"}` over the WebSocket; (3) MA players appear as `media_player.*` entities tagged with that config entry; the admin grants them by area like any device (they are shared playback hardware). Streaming provider accounts (Spotify, Tidal, local library) are configured inside MA's UI, reached through the same gated admin route as HA (§14, port 8445 → 8095). The music module's `default_player` setting is `x-per-profile` ([MODULES §6.3](MODULES.md#63-per-profile-overrides)): each person may pick their own default speaker. Choosing a person's own MA provider account ("play my liked songs" from Alex's Spotify) is **not** in v0.1: `play_media` has no provider filter, and `ctx.ha.call_service` returns no service response data, so `music_assistant.search` (`return_response`) cannot be used by a module; it arrives with `spotify` in v0.2 ([ROADMAP](ROADMAP.md)). Services used: `music_assistant.play_media` (`media_id`, `media_type`, `enqueue`, `radio_mode`) on the chosen player; MA players are told apart from other media players by the `mass_player_type` state attribute; `media_player.*` for transport (`media.control`). Details, prompts and quirks are in `modules/music/AGENT.md`.
 
 ---
 
@@ -391,7 +406,7 @@ Setup, driven by **Integrations › Music › Set up** in the web UI: (1) the in
 HA ships monthly with breaking changes (2026.10 removed eight integrations). Three defences:
 
 1. **Pin by digest.** The HA digest is pinned in one place, the deploy `.env` ([OPERATIONS §3](OPERATIONS.md#3-compose-layout)). Renovate-style PRs bump it; CI must pass before merge.
-2. **Bridge contract tests** in `core/beepboop/ha/tests/contract/`, run in CI against the pinned image (amd64 build of the same tag, with HA's `demo` integration) and nightly against `latest`. They assert the exact surface we depend on:
+2. **Bridge contract tests** in `core/tests/ha/contract/` (pending: needs the pinned HA container), run in CI against the pinned image (amd64 build of the same tag, with HA's `demo` integration) and nightly against `latest`. They assert the exact surface we depend on:
    - onboarding endpoints and payloads (§3), including `auth/long_lived_access_token` on a login session;
    - `server_host: 127.0.0.1` actually binds loopback;
    - every WebSocket command in §4 answers with the fields in `EntityRef`, `Area`, `State`;
@@ -406,30 +421,7 @@ HA ships monthly with breaking changes (2026.10 removed eight integrations). Thr
 
 ## 14. Admin access to HA's UI
 
-Admins sometimes need HA's frontend (pairing a Zigbee device, debugging an integration). HA does not run under a URL path prefix, so the gated route is a second site on the same host, in the same form as [OPERATIONS §4](OPERATIONS.md#4-caddy):
-
-```
-{$BB_HOST}:8443 {
-  tls internal
-  forward_auth 127.0.0.1:8080 {
-    uri /api/auth/check?require=admin      # 200 if the beepboop session cookie belongs to an admin, else 401
-    copy_headers X-BB-Profile
-  }
-  reverse_proxy 127.0.0.1:8123 {             # WebSocket upgrades pass through
-    header_up -Cookie                        # beepboop's session cookie never reaches HA
-  }
-}
-{$BB_HOST}:8445 {                            # same pattern for Music Assistant's UI when the `music` profile is enabled
-  tls internal
-  forward_auth 127.0.0.1:8080 {
-    uri /api/auth/check?require=admin
-    copy_headers X-BB-Profile
-  }
-  reverse_proxy 127.0.0.1:8095 {
-    header_up -Cookie
-  }
-}
-```
+Admins sometimes need HA's frontend (pairing a Zigbee device, debugging an integration). HA does not run under a URL path prefix, so the gated route is a second Caddy site on the same host, `:8443` (and `:8445` for Music Assistant with the `music` profile), owned by [OPERATIONS §4](OPERATIONS.md#4-caddy): `forward_auth` to `/api/auth/check?require=admin` (200 only for a beepboop admin session), WebSocket upgrades pass through, and the beepboop session cookie never reaches HA.
 
 Reaching HA's UI is one tap: **Open Home Assistant** on Integrations › Home Assistant. **HA does ask for its own login on first use**: the gate above proves you are a beepboop admin, but HA keeps its own users, and beepboop deliberately does not create one for you. The owner password reveal lives in Integrations › Home Assistant › **Advanced** › "Reveal owner password": it re-authenticates with password + TOTP, writes an audit row, and shows the `beepboop-system` password once. Admins who want their own HA login can create one from HA's UI afterwards; beepboop does not manage it. Members and children never see this page; their only HA is beepboop.
 
@@ -443,12 +435,7 @@ Reaching HA's UI is one tap: **Open Home Assistant** on Integrations › Home As
 
 ## 16. M0 checklist (HA part)
 
-- [ ] Pinned image boots on Pi OS Lite 64-bit with the `homeassistant` service from [OPERATIONS §3](OPERATIONS.md#3-compose-layout); RSS and CPU recorded with the recorder settings applied.
-- [ ] `server_host: 127.0.0.1` verified from a second LAN host; nftables rule verified by disabling layer 1 (V1). Record which discovery-based integrations the default-deny chain breaks (§2.1).
-- [ ] Headless onboarding (§3) runs end to end on a fresh volume; LLAT minted; `GET /api/onboarding` reports all steps done.
-- [ ] WebSocket startup (§4) under 2 s on a 200-entity demo household; `call_service` round trip p50/p90 measured over loopback (target: 40 ms p50).
-- [ ] Resolver fixture suite passes; `beepboop bench` includes "resolve + authorize" (target: 20 ms).
-- [ ] Contract tests green against the pinned digest.
+V1 (loopback bind and the nftables backstop, plus which discovery integrations default-deny breaks) and V2 (headless onboarding on the pinned image) are tracked in [ROADMAP M0](ROADMAP.md#m0-prove-the-pi). The HA-specific numbers M0 also records: RSS and CPU with the §2.2 recorder settings; WebSocket startup (§4) on a 200-entity demo household (target: under 2 s); `call_service` round trip over loopback (target: 40 ms p50); "resolve + authorize" in `beepboop bench` (target: 20 ms); contract tests green against the pinned digest.
 
 ## 17. Open questions
 
